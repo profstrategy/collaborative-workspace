@@ -1,6 +1,7 @@
-import type { Board, BoardCard, BoardColumn, Tag } from "./domain.types";
+import type { AppState, Board, BoardCard, BoardColumn, Tag } from "./domain.types";
 
 export const AppAction = {
+	STATE_RESTORED: "state/restored",
 	BOARD_CREATED: "board/created",
 	BOARD_UPDATED: "board/updated",
 	BOARD_DELETED: "board/deleted",
@@ -14,6 +15,7 @@ export const AppAction = {
 } as const;
 
 export type AppAction =
+	| { type: "state/restored"; payload: AppState }
 	| { type: "board/created"; payload: Board }
 	| {
 			type: "board/updated";

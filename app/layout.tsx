@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "@/state/AppProvider";
 import Sidebar from "@/components/layout/Sidebar";
+import BoardLoading from "./board/[boardId]/loading";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
