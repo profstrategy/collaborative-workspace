@@ -34,7 +34,7 @@ export interface Tag {
  id: EntityId;
  cardId: EntityId;
  columnId: EntityId;
- name: string;
+ status: "Pending" | "Ongoing" | "Completed" | "Bugs";
  color: string;
 }
 

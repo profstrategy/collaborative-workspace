@@ -44,7 +44,7 @@ export const initialTag: Tag = {
   id: "",
   cardId: "",
   columnId: "",
-  name: '',
+  status: "Pending",
   color: ''
 };
 
