@@ -3,6 +3,9 @@ import type { AppState, BoardCard } from "./domain.types";
 
 export function appReducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
+		case "state/restored":
+			return action.payload;
+
 		case "board/created": {
 			const board = action.payload;
 			const title = board.title.trim();
@@ -30,13 +33,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 				boards: {
 					...state.boards,
 					[newBoard.id]: newBoard,
-				},
-
-				// Close the modal after successful creation.
-				// ui: {
-				//     ...state.ui,
-				//     createBoardModalOpen: false,
-				// },
+				}
 			};
 		}
 
@@ -68,24 +65,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 				},
 			};
 		}
-
-		// case "board/create-modal-opened":
-		//     return {
-		//         ...state,
-		//         ui: {
-		//             ...state.ui,
-		//             createBoardModalOpen: true,
-		//         },
-		//     };
-
-		// case "board/create-modal-closed":
-		//     return {
-		//         ...state,
-		//         ui: {
-		//             ...state.ui,
-		//             createBoardModalOpen: false,
-		//         },
-		//     };
 
 		case "board/deleted": {
 			const boardId = action.payload.id;
@@ -185,26 +164,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 				},
 			};
 		}
-
-		// case "column/create-modal-opened": {
-		//     return {
-		//         ...state,
-		//         ui: {
-		//             ...state.ui,
-		//             createColumnModalOpen: true
-		//         }
-		//     }
-		// }
-
-		// case "column/create-modal-closed": {
-		//     return {
-		//         ...state,
-		//         ui: {
-		//             ...state.ui,
-		//             createColumnModalOpen: false
-		//         }
-		//     }
-		// }
 
 		case "column/deleted": {
 			const columnId = action.payload.id;

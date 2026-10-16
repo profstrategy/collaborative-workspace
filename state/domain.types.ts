@@ -43,9 +43,4 @@ export interface AppState {
   columns: Record<EntityId, BoardColumn>;
   cards: Record<EntityId, BoardCard>;
   tags: Record<EntityId, Tag>;
-
-  // ui: {
-  //   createBoardModalOpen: boolean;
-  //   createColumnModalOpen: boolean
-  // };
 }
