@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import MarkdownPreview from "@/components/ui/MarkdownPreview";
 import type { Board } from "@/state/domain.types";
 import { useBoardCardUI } from "../hooks/useBoardCardUI";
 
@@ -117,9 +118,11 @@ export default function BoardCard({ board, onEdit, onDelete }: BoardCardProps) {
 				</div>
 
 				{board.description && (
-					<p className="mt-2 line-clamp-3 text-sm leading-relaxed text-[#4B5563]">
-						{board.description}
-					</p>
+					<div className="mt-2 line-clamp-3 text-sm leading-relaxed">
+						<MarkdownPreview compact links={false}>
+							{board.description}
+						</MarkdownPreview>
+					</div>
 				)}
 			</div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import MarkdownPreview from "@/components/ui/MarkdownPreview";
 import type { Tag, BoardCard as Task } from "@/state/domain.types";
 import { useTaskCardUI } from "../hooks/useTaskCardUI";
 import { tagStatusClasses } from "../tagPresentation";
@@ -108,9 +109,9 @@ export default function TaskCard({
 				</div>
 
 				{card.description && (
-					<p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-[#4B5563]">
-						{card.description}
-					</p>
+					<div className="mt-1.5 line-clamp-2 text-xs leading-relaxed">
+						<MarkdownPreview compact>{card.description}</MarkdownPreview>
+					</div>
 				)}
 			</div>
 

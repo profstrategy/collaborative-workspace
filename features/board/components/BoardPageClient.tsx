@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import MarkdownPreview from "@/components/ui/MarkdownPreview";
 import { useAppProvider } from "@/state/AppProvider";
 import type { BoardCard, BoardColumn } from "@/state/domain.types";
 import { useBoard } from "../hooks/useBoard";
@@ -124,9 +125,9 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 							{board.title}
 						</h1>
 						{board.description && (
-							<p className="mt-1 max-w-3xl text-sm text-[#4B5563]">
-								{board.description}
-							</p>
+							<div className="mt-1 max-w-3xl text-sm">
+								<MarkdownPreview compact>{board.description}</MarkdownPreview>
+							</div>
 						)}
 					</div>
 					<Button
