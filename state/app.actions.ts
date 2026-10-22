@@ -1,4 +1,10 @@
-import type { AppState, Board, BoardCard, BoardColumn, Tag } from "./domain.types";
+import type {
+	AppState,
+	Board,
+	BoardCard,
+	BoardColumn,
+	Tag,
+} from "./domain.types";
 
 export const AppAction = {
 	STATE_RESTORED: "state/restored",

@@ -27,7 +27,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isStringArray(value: unknown): value is string[] {
-	return Array.isArray(value) && value.every((item) => typeof item === "string");
+	return (
+		Array.isArray(value) && value.every((item) => typeof item === "string")
+	);
 }
 
 function hasUniqueStrings(values: string[]) {
@@ -132,9 +134,7 @@ export function isAppState(value: unknown): value is AppState {
 		if (!board || !board.columnIds.includes(column.id)) return false;
 
 		if (
-			column.cardIds.some(
-				(cardId) => cards[cardId]?.columnId !== column.id,
-			)
+			column.cardIds.some((cardId) => cards[cardId]?.columnId !== column.id)
 		) {
 			return false;
 		}
@@ -195,7 +195,9 @@ export function load(): StorageLoadResult {
 		}
 
 		if (!isAppState(parsedValue)) {
-			console.warn("[storageAdapter] Stored app state does not match the current schema.");
+			console.warn(
+				"[storageAdapter] Stored app state does not match the current schema.",
+			);
 			return { status: "invalid" };
 		}
 

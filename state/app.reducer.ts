@@ -33,7 +33,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 				boards: {
 					...state.boards,
 					[newBoard.id]: newBoard,
-				}
+				},
 			};
 		}
 
