@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { initialAppState } from "../state/app.initialState.ts";
+import { appReducer } from "../state/app.reducer.ts";
 import {
 	clear,
 	load,
 	save,
 	shouldPersistAfterHydration,
 } from "./storageAdapter.ts";
-import { initialAppState } from "../state/app.initialState.ts";
-import { appReducer } from "../state/app.reducer.ts";
 
 const originalWindow = globalThis.window;
 const originalWarn = console.warn;
@@ -236,4 +236,40 @@ test("reducer state changes can be saved and restored", () => {
 	assert.equal(result.status, "loaded");
 	if (result.status !== "loaded") return;
 	assert.deepEqual(result.state.boards.board1, board);
+});
+
+test("moved cards and their tags remain valid when saved and restored", () => {
+	const storage = createStorage();
+	useStorage(storage);
+	const state = createState();
+	const destinationColumn = {
+		id: "column2",
+		boardId: "board1",
+		title: "Done",
+		cardIds: [],
+		position: 1,
+	};
+	state.boards.board1.columnIds.push(destinationColumn.id);
+	state.columns[destinationColumn.id] = destinationColumn;
+
+	const movedState = appReducer(state, {
+		type: "card/moved",
+		payload: {
+			cardId: "card1",
+			sourceColumnId: "column1",
+			destinationColumnId: destinationColumn.id,
+			destinationIndex: 0,
+			movedAt: "2026-10-17T10:00:00.000Z",
+		},
+	});
+
+	assert.equal(save(movedState), true);
+	const result = load();
+	assert.equal(result.status, "loaded");
+	if (result.status !== "loaded") return;
+	assert.deepEqual(result.state.columns.column1.cardIds, ["card2"]);
+	assert.deepEqual(result.state.columns.column2.cardIds, ["card1"]);
+	assert.equal(result.state.cards.card1.columnId, "column2");
+	assert.equal(result.state.cards.card1.position, 0);
+	assert.equal(result.state.tags.tag1.columnId, "column2");
 });

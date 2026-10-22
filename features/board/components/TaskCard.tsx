@@ -1,7 +1,13 @@
 "use client";
 
+import type { DragEvent as ReactDragEvent } from "react";
 import MarkdownPreview from "@/components/ui/MarkdownPreview";
-import type { Tag, BoardCard as Task } from "@/state/domain.types";
+import type {
+	BoardColumn,
+	EntityId,
+	Tag,
+	BoardCard as Task,
+} from "@/state/domain.types";
 import { useTaskCardUI } from "../hooks/useTaskCardUI";
 import { tagStatusClasses } from "../tagPresentation";
 import TagDropdown from "./TagDropdown";
@@ -12,6 +18,13 @@ export interface TaskCardProps {
 	onEdit?: (card: Task) => void;
 	onDelete?: (card: Task) => void;
 	onTagsChange?: (statuses: Tag["status"][]) => void;
+	columns?: readonly BoardColumn[];
+	destinationIndex?: number;
+	onMoveCard?: (
+		cardId: EntityId,
+		destinationColumnId: EntityId,
+		destinationIndex: number,
+	) => void;
 }
 
 function formatDueDate(value: string | null) {
@@ -37,6 +50,9 @@ export default function TaskCard({
 	onEdit,
 	onDelete,
 	onTagsChange,
+	columns = [],
+	destinationIndex = 0,
+	onMoveCard,
 }: TaskCardProps) {
 	const {
 		closeTagSelector,
@@ -55,9 +71,34 @@ export default function TaskCard({
 			tag.columnId === card.columnId &&
 			card.tagIds.includes(tag.id),
 	);
+	const destinationColumns = columns.filter(
+		(column) => column.boardId === card.boardId && column.id !== card.columnId,
+	);
+
+	const handleDragStart = (event: ReactDragEvent<HTMLElement>) => {
+		event.dataTransfer.setData("text/plain", card.id);
+		event.dataTransfer.effectAllowed = "move";
+	};
+
+	const handleDrop = (event: ReactDragEvent<HTMLElement>) => {
+		if (!onMoveCard) return;
+
+		event.preventDefault();
+		event.stopPropagation();
+		const draggedCardId = event.dataTransfer.getData("text/plain");
+		if (draggedCardId) {
+			onMoveCard(draggedCardId, card.columnId, destinationIndex);
+		}
+	};
 
 	return (
-		<article className="group flex min-h-40 flex-col justify-between rounded-xl border border-[#E2E5E9] bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm focus-within:border-slate-300 focus-within:shadow-sm motion-reduce:transition-none">
+		<article
+			draggable={Boolean(onMoveCard)}
+			onDragStart={onMoveCard ? handleDragStart : undefined}
+			onDragOver={onMoveCard ? (event) => event.preventDefault() : undefined}
+			onDrop={onMoveCard ? handleDrop : undefined}
+			className="group flex min-h-40 flex-col justify-between rounded-xl border border-[#E2E5E9] bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm focus-within:border-slate-300 focus-within:shadow-sm motion-reduce:transition-none"
+		>
 			<div>
 				<div className="flex items-start justify-between gap-2">
 					<h3 className="min-w-0 flex-1 text-sm font-semibold leading-snug text-[#1E232A]">
@@ -146,6 +187,35 @@ export default function TaskCard({
 								closeTagSelector(true);
 							}}
 						/>
+					)}
+					{onMoveCard && destinationColumns.length > 0 && (
+						<select
+							aria-label={`Move task: ${card.title} to column`}
+							defaultValue=""
+							onChange={(event) => {
+								const select = event.currentTarget;
+								const destinationColumnId = select.value;
+								select.value = "";
+								const destinationColumn = destinationColumns.find(
+									(column) => column.id === destinationColumnId,
+								);
+								if (destinationColumn) {
+									onMoveCard(
+										card.id,
+										destinationColumnId,
+										destinationColumn.cardIds.length,
+									);
+								}
+							}}
+							className="max-w-28 rounded border border-[#E2E5E9] bg-white px-1.5 py-1 text-[11px] text-[#4B5563] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+						>
+							<option value="">Move to column</option>
+							{destinationColumns.map((column) => (
+								<option key={column.id} value={column.id}>
+									{column.title}
+								</option>
+							))}
+						</select>
 					)}
 				</div>
 

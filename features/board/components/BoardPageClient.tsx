@@ -34,6 +34,7 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 		handleCreateColumn,
 		handleDeleteCard,
 		handleDeleteColumn,
+		handleMoveCard,
 		handleUpdateCard,
 		handleUpdateColumn,
 		handleUpdateTags,
@@ -162,8 +163,10 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 								<KanbanColumn
 									key={column.id}
 									column={column}
+									columns={columns}
 									cards={cards}
 									tags={tags}
+									onMoveCard={handleMoveCard}
 									onEditColumn={setEditingColumn}
 									onDeleteColumn={(selectedColumn) =>
 										setPendingDeletion({

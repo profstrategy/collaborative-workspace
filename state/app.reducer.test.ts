@@ -192,7 +192,10 @@ describe("appReducer: general", () => {
 				type: "column/created",
 				payload: makeColumn({ id: "c9", boardId: "b1", title: "New col" }),
 			},
-			{ type: "column/updated", payload: { id: "c1", changes: { title: "Y" } } },
+			{
+				type: "column/updated",
+				payload: { id: "c1", changes: { title: "Y" } },
+			},
 			{ type: "column/deleted", payload: { id: "c1" } },
 			{
 				type: "card/created",
@@ -212,7 +215,12 @@ describe("appReducer: general", () => {
 				payload: {
 					cardId: "k1",
 					tags: [
-						makeTag({ id: "t9", cardId: "k1", columnId: "c1", status: COMPLETED }),
+						makeTag({
+							id: "t9",
+							cardId: "k1",
+							columnId: "c1",
+							status: COMPLETED,
+						}),
 					],
 				},
 			},
@@ -888,7 +896,11 @@ describe("card/updated", () => {
 			expect(result.columns.c1?.cardIds).toEqual(["k1", "k2", "k3"]);
 		});
 
-		it.each([-1, 1.5, Number.NaN])("rejects an invalid position (%s)", (position) => {
+		it.each([
+			-1,
+			1.5,
+			Number.NaN,
+		])("rejects an invalid position (%s)", (position) => {
 			const state = seedState();
 
 			expect(
@@ -1124,6 +1136,96 @@ describe("card/tags-updated", () => {
 			reduce(state, {
 				type: "card/tags-updated",
 				payload: { cardId: "k1", tags: [tagFor({ id: "t4" })] },
+			}),
+		).toBe(state);
+	});
+});
+
+/* -------------------------------------------------------------------------- */
+/* card/moved                                                                  */
+/* -------------------------------------------------------------------------- */
+
+describe("card/moved", () => {
+	it("reorders a card within its column and refreshes positions", () => {
+		const state = seedState();
+		const result = reduce(state, {
+			type: "card/moved",
+			payload: {
+				cardId: "k1",
+				sourceColumnId: "c1",
+				destinationColumnId: "c1",
+				destinationIndex: 2,
+				movedAt: NOW,
+			},
+		});
+
+		expect(result.columns.c1?.cardIds).toEqual(["k2", "k3", "k1"]);
+		expect(result.cards.k1?.position).toBe(2);
+		expect(result.cards.k2?.position).toBe(0);
+		expect(result.cards.k3?.position).toBe(1);
+		expect(result.cards.k1?.updatedAt).toBe(NOW);
+		expect(result.columns.c2).toBe(state.columns.c2);
+	});
+
+	it("moves a card between columns and keeps its tags aligned", () => {
+		const state = seedState();
+		const result = reduce(state, {
+			type: "card/moved",
+			payload: {
+				cardId: "k1",
+				sourceColumnId: "c1",
+				destinationColumnId: "c2",
+				destinationIndex: 0,
+				movedAt: NOW,
+			},
+		});
+
+		expect(result.columns.c1?.cardIds).toEqual(["k2", "k3"]);
+		expect(result.columns.c2?.cardIds).toEqual(["k1", "k4"]);
+		expect(result.cards.k1?.columnId).toBe("c2");
+		expect(result.cards.k1?.position).toBe(0);
+		expect(result.cards.k2?.position).toBe(0);
+		expect(result.cards.k3?.position).toBe(1);
+		expect(result.cards.k4?.position).toBe(1);
+		expect(result.cards.k1?.updatedAt).toBe(NOW);
+		expect(result.tags.t1?.columnId).toBe("c2");
+		expect(result.tags.t2?.columnId).toBe("c2");
+		expect(state.columns.c1?.cardIds).toEqual(["k1", "k2", "k3"]);
+		expect(state.tags.t1?.columnId).toBe("c1");
+	});
+
+	it("rejects a stale source, a cross-board destination, and invalid indexes", () => {
+		const state = seedState();
+		const basePayload = {
+			cardId: "k1",
+			sourceColumnId: "c1",
+			destinationColumnId: "c2",
+			destinationIndex: 0,
+			movedAt: NOW,
+		};
+
+		expect(
+			reduce(state, {
+				type: "card/moved",
+				payload: { ...basePayload, sourceColumnId: "c2" },
+			}),
+		).toBe(state);
+		expect(
+			reduce(state, {
+				type: "card/moved",
+				payload: { ...basePayload, destinationColumnId: "c3" },
+			}),
+		).toBe(state);
+		expect(
+			reduce(state, {
+				type: "card/moved",
+				payload: { ...basePayload, destinationIndex: -1 },
+			}),
+		).toBe(state);
+		expect(
+			reduce(state, {
+				type: "card/moved",
+				payload: { ...basePayload, destinationIndex: 1.5 },
 			}),
 		).toBe(state);
 	});

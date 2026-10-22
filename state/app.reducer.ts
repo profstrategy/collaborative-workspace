@@ -1,5 +1,162 @@
 import type { AppAction } from "./app.actions";
-import type { AppState, BoardCard } from "./domain.types";
+import type { AppState, BoardCard, EntityId, Tag } from "./domain.types";
+
+
+function reindexCards(
+	cards: Record<EntityId, BoardCard>,
+	cardIds: EntityId[],
+	columnId: EntityId,
+): Record<EntityId, BoardCard> {
+	const nextCards = { ...cards };
+
+	cardIds.forEach((cardId, index) => {
+		const card = nextCards[cardId];
+
+		if (card) {
+			nextCards[cardId] = {
+				...card,
+				columnId,
+				position: index,
+			};
+		}
+	});
+
+	return nextCards;
+}
+
+function moveCard(
+	state: AppState,
+	payload: {
+		cardId: EntityId;
+		sourceColumnId: EntityId;
+		destinationColumnId: EntityId;
+		destinationIndex: number;
+		movedAt: string;
+	},
+): AppState {
+	const {
+		cardId,
+		sourceColumnId,
+		destinationColumnId,
+		destinationIndex,
+		movedAt,
+	} = payload;
+
+	const card = state.cards[cardId];
+	const source = state.columns[sourceColumnId];
+	const destination = state.columns[destinationColumnId];
+
+	// Reject invalid IDs, stale source columns, and invalid positions.
+	if (
+		!card ||
+		!source ||
+		!destination ||
+		card.columnId !== sourceColumnId ||
+		source.boardId !== destination.boardId ||
+		card.boardId !== source.boardId ||
+		!Number.isInteger(destinationIndex) ||
+		destinationIndex < 0 ||
+		!source.cardIds.includes(cardId)
+	) {
+		return state;
+	}
+
+	// A different destination must not already contain the card.
+	if (
+		sourceColumnId !== destinationColumnId &&
+		destination.cardIds.includes(cardId)
+	) {
+		return state;
+	}
+
+	const sourceCardIds = source.cardIds.filter((id) => id !== cardId);
+
+	// Remove the card first, then calculate its final insertion index.
+	const destinationBaseIds =
+		sourceColumnId === destinationColumnId
+			? sourceCardIds
+			: [...destination.cardIds];
+
+	const insertionIndex = Math.min(
+		destinationIndex,
+		destinationBaseIds.length,
+	);
+
+	const destinationCardIds = [
+		...destinationBaseIds.slice(0, insertionIndex),
+		cardId,
+		...destinationBaseIds.slice(insertionIndex),
+	];
+
+	const columns = {
+		...state.columns,
+		[sourceColumnId]: {
+			...source,
+			cardIds:
+				sourceColumnId === destinationColumnId
+					? destinationCardIds
+					: sourceCardIds,
+		},
+	};
+
+	if (sourceColumnId !== destinationColumnId) {
+		columns[destinationColumnId] = {
+			...destination,
+			cardIds: destinationCardIds,
+		};
+	}
+
+	let cards = state.cards;
+
+	if (sourceColumnId === destinationColumnId) {
+		cards = reindexCards(
+			state.cards,
+			destinationCardIds,
+			destinationColumnId,
+		);
+	} else {
+		cards = reindexCards(
+			state.cards,
+			sourceCardIds,
+			sourceColumnId,
+		);
+		cards = reindexCards(
+			cards,
+			destinationCardIds,
+			destinationColumnId,
+		);
+	}
+
+	cards = {
+		...cards,
+		[cardId]: {
+			...cards[cardId],
+			updatedAt: movedAt,
+		},
+	};
+
+	// Keep tag.columnId consistent with the card's current column.
+	const tags: Record<EntityId, Tag> = { ...state.tags };
+
+	for (const tagId of card.tagIds) {
+		const tag = tags[tagId];
+
+		if (tag && tag.cardId === cardId) {
+			tags[tagId] = {
+				...tag,
+				columnId: destinationColumnId,
+			};
+		}
+	}
+
+	return {
+		...state,
+		columns,
+		cards,
+		tags,
+	};
+}
+
 
 export function appReducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
@@ -527,6 +684,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 			};
 		}
 
+			case 'card/moved':
+			return moveCard(state, action.payload);
 		default:
 			return state;
 	}
