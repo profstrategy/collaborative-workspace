@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PersistenceStatus from "@/components/ui/PersistenceStatus";
 import { useAppProvider } from "@/state/AppProvider";
 import type { Board } from "@/state/domain.types";
 import { useWorkSpace } from "../hooks/useWorkspace";
@@ -11,7 +12,7 @@ import BoardCard from "./BoardCard";
 import CreateBoardModal from "./CreateBoardModal";
 
 export default function WorkspaceDashboard() {
-	const { state } = useAppProvider();
+	const { state, persistence, retrySave } = useAppProvider();
 	const { handleCreateBoard, handleDeleteBoard, handleUpdateBoard } =
 		useWorkSpace();
 	const [isBoardModalOpen, setIsBoardModalOpen] = useState(false);
@@ -49,20 +50,23 @@ export default function WorkspaceDashboard() {
 						<h1 className="text-2xl font-semibold text-[#1E232A]">Workspace</h1>
 						<p className="mt-1 text-sm text-[#4B5563]">Your project boards</p>
 					</div>
-					<Button variant="lightblue" onClick={openCreateBoard}>
-						<svg
-							aria-hidden="true"
-							focusable="false"
-							className="h-4 w-4"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="2"
-							viewBox="0 0 24 24"
-						>
-							<path d="M12 5v14M5 12h14" />
-						</svg>
-						Create board
-					</Button>
+					<div className="flex items-center gap-3">
+						<PersistenceStatus persistence={persistence} onRetry={retrySave} />
+						<Button variant="lightblue" onClick={openCreateBoard}>
+							<svg
+								aria-hidden="true"
+								focusable="false"
+								className="h-4 w-4"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+								viewBox="0 0 24 24"
+							>
+								<path d="M12 5v14M5 12h14" />
+							</svg>
+							Create board
+						</Button>
+					</div>
 				</header>
 
 				{boards.length > 0 ? (

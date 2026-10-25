@@ -54,15 +54,13 @@ export default function KanbanColumn({
 		triggerRef,
 	} = useKanbanColumnUI();
 
-	const columnCards = cards
-		.filter(
-			(card) => card.columnId === column.id && card.boardId === column.boardId,
-		)
-		.sort(
-			(firstCard, secondCard) =>
-				(firstCard.position ?? Number.MAX_SAFE_INTEGER) -
-				(secondCard.position ?? Number.MAX_SAFE_INTEGER),
-		);
+	const cardsById = new Map(cards.map((card) => [card.id, card]));
+	const columnCards = column.cardIds.flatMap((cardId) => {
+		const card = cardsById.get(cardId);
+		return card?.columnId === column.id && card.boardId === column.boardId
+			? [card]
+			: [];
+	});
 	const hasColumnActions = Boolean(onEditColumn || onDeleteColumn);
 
 	const handleDrop = (event: ReactDragEvent<HTMLElement>) => {
@@ -71,7 +69,12 @@ export default function KanbanColumn({
 		event.preventDefault();
 		const cardId = event.dataTransfer.getData("text/plain");
 		if (cardId) {
-			onMoveCard(cardId, column.id, columnCards.length);
+			const sourceCard = cards.find((card) => card.id === cardId);
+			const destinationIndex =
+				sourceCard?.columnId === column.id
+					? columnCards.length - 1
+					: columnCards.length;
+			onMoveCard(cardId, column.id, Math.max(0, destinationIndex));
 		}
 	};
 
@@ -175,6 +178,7 @@ export default function KanbanColumn({
 								onEdit={onEditCard}
 								onDelete={onDeleteCard}
 								destinationIndex={index}
+								columnCardCount={columnCards.length}
 								onMoveCard={onMoveCard}
 								onTagsChange={
 									onTagsChange

@@ -180,51 +180,45 @@ export function useBoard(boardId: EntityId) {
 		[boardId, dispatch, state.cards, state.tags],
 	);
 
-	
-const handleMoveCard = useCallback(
-	(
-		cardId: EntityId,
-		destinationColumnId: EntityId,
-		destinationIndex: number,
-	) => {
-		const card = state.cards[cardId];
-		const sourceColumn = card
-			? state.columns[card.columnId]
-			: undefined;
-		const destinationColumn = state.columns[destinationColumnId];
+	const handleMoveCard = useCallback(
+		(
+			cardId: EntityId,
+			destinationColumnId: EntityId,
+			destinationIndex: number,
+		) => {
+			const card = state.cards[cardId];
+			const sourceColumn = card ? state.columns[card.columnId] : undefined;
+			const destinationColumn = state.columns[destinationColumnId];
 
-		// Validate the card and both columns.
-		if (
-			!card ||
-			!sourceColumn ||
-			!destinationColumn ||
-			card.boardId !== boardId ||
-			sourceColumn.boardId !== boardId ||
-			destinationColumn.boardId !== boardId
-		) {
-			return;
-		}
+			// Validate the card and both columns.
+			if (
+				!card ||
+				!sourceColumn ||
+				!destinationColumn ||
+				card.boardId !== boardId ||
+				sourceColumn.boardId !== boardId ||
+				destinationColumn.boardId !== boardId
+			) {
+				return;
+			}
 
-		if (
-			!Number.isInteger(destinationIndex) ||
-			destinationIndex < 0
-		) {
-			return;
-		}
+			if (!Number.isInteger(destinationIndex) || destinationIndex < 0) {
+				return;
+			}
 
-		dispatch({
-			type: "card/moved",
-			payload: {
-				cardId,
-				sourceColumnId: sourceColumn.id,
-				destinationColumnId,
-				destinationIndex,
-				movedAt: new Date().toISOString(),
-			},
-		});
-	},
-	[boardId, dispatch, state.cards, state.columns],
-);
+			dispatch({
+				type: "card/moved",
+				payload: {
+					cardId,
+					sourceColumnId: sourceColumn.id,
+					destinationColumnId,
+					destinationIndex,
+					movedAt: new Date().toISOString(),
+				},
+			});
+		},
+		[boardId, dispatch, state.cards, state.columns],
+	);
 
 	return {
 		handleCreateColumn,

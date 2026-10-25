@@ -3,12 +3,18 @@ import {
 	createContext,
 	type Dispatch,
 	type ReactNode,
+	useCallback,
 	useContext,
 	useEffect,
 	useReducer,
 	useRef,
 	useState,
 } from "react";
+import {
+	createMockBoardApi,
+	type MockBoardApi,
+	type MockPersistenceStatus,
+} from "@/services/mockBoardApi";
 import {
 	load,
 	type StorageLoadResult,
@@ -20,34 +26,124 @@ import { initialAppState } from "./app.initialState";
 import { appReducer } from "./app.reducer";
 import type { AppState } from "./domain.types";
 
+export interface PersistenceStatusState {
+	status: MockPersistenceStatus;
+	message: string;
+	canRetry: boolean;
+}
+
 interface AppContextValue {
 	state: AppState;
 	dispatch: Dispatch<AppAction>;
 	isHydrated: boolean;
+	persistence: PersistenceStatusState;
+	retrySave: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-export function AppProvider({ children }: { children: ReactNode }) {
+export function AppProvider({
+	children,
+	mockApi = createMockBoardApi(),
+}: {
+	children: ReactNode;
+	mockApi?: MockBoardApi;
+}) {
 	const [state, dispatch] = useReducer(appReducer, initialAppState);
 	const [isHydrated, setIsHydrated] = useState(false);
 	const [storageStatus, setStorageStatus] = useState<
 		StorageLoadResult["status"] | "pending"
 	>("pending");
+	const [persistence, setPersistence] = useState<PersistenceStatusState>({
+		status: "saving",
+		message: "Loading workspace...",
+		canRetry: false,
+	});
 	const restoredStateRef = useRef(initialAppState);
+	const latestStateRef = useRef(initialAppState);
+	const latestRequestRef = useRef(0);
+	const persistedRevisionRef = useRef(0);
+	const apiRef = useRef(mockApi);
+
+	const persistState = useCallback(
+		async (nextState: AppState, mode: MockPersistenceStatus = "saving") => {
+			const requestId = ++latestRequestRef.current;
+			latestStateRef.current = nextState;
+			setPersistence({
+				status: mode,
+				message: mode === "retrying" ? "Retrying save..." : "Saving changes...",
+				canRetry: false,
+			});
+
+			const result = await apiRef.current.saveState(
+				nextState,
+				persistedRevisionRef.current,
+			);
+
+			if (requestId !== latestRequestRef.current) {
+				return;
+			}
+
+			if (!result.ok) {
+				setPersistence({
+					status: "unsaved",
+					message: result.error,
+					canRetry: true,
+				});
+				return;
+			}
+
+			persistedRevisionRef.current = result.revision;
+			setPersistence({
+				status: "saved",
+				message: "All changes saved.",
+				canRetry: false,
+			});
+		},
+		[],
+	);
+
+	const retrySave = useCallback(() => {
+		void persistState(latestStateRef.current, "retrying");
+	}, [persistState]);
 
 	useEffect(() => {
-		const result = load();
+		let isMounted = true;
 
-		if (result.status === "loaded") {
-			restoredStateRef.current = result.state;
-			dispatch({ type: "state/restored", payload: result.state });
-		} else {
-			restoredStateRef.current = initialAppState;
-		}
+		const initialize = async () => {
+			const result = load();
 
-		setStorageStatus(result.status);
-		setIsHydrated(true);
+			if (result.status === "loaded") {
+				restoredStateRef.current = result.state;
+				dispatch({ type: "state/restored", payload: result.state });
+			} else {
+				restoredStateRef.current = initialAppState;
+			}
+
+			const apiSnapshot = await apiRef.current.loadInitialState();
+			if (!isMounted) return;
+
+			if (apiSnapshot.status === "loaded") {
+				persistedRevisionRef.current = apiSnapshot.revision;
+				if (result.status !== "loaded") {
+					restoredStateRef.current = apiSnapshot.state;
+					dispatch({ type: "state/restored", payload: apiSnapshot.state });
+				}
+			}
+
+			setStorageStatus(result.status);
+			setPersistence({
+				status: "saved",
+				message: "All changes saved.",
+				canRetry: false,
+			});
+			setIsHydrated(true);
+		};
+
+		void initialize();
+		return () => {
+			isMounted = false;
+		};
 	}, []);
 
 	useEffect(() => {
@@ -64,8 +160,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		}
 	}, [isHydrated, state, storageStatus]);
 
+	useEffect(() => {
+		if (!isHydrated) return;
+		if (state === restoredStateRef.current) return;
+		void persistState(state, "saving");
+	}, [isHydrated, state, persistState]);
+
 	return (
-		<AppContext.Provider value={{ state, dispatch, isHydrated }}>
+		<AppContext.Provider
+			value={{ state, dispatch, isHydrated, persistence, retrySave }}
+		>
 			{isHydrated ? (
 				children
 			) : (

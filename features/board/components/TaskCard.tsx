@@ -1,6 +1,7 @@
 "use client";
 
 import type { DragEvent as ReactDragEvent } from "react";
+import { useState } from "react";
 import MarkdownPreview from "@/components/ui/MarkdownPreview";
 import type {
 	BoardColumn,
@@ -20,6 +21,7 @@ export interface TaskCardProps {
 	onTagsChange?: (statuses: Tag["status"][]) => void;
 	columns?: readonly BoardColumn[];
 	destinationIndex?: number;
+	columnCardCount?: number;
 	onMoveCard?: (
 		cardId: EntityId,
 		destinationColumnId: EntityId,
@@ -52,8 +54,10 @@ export default function TaskCard({
 	onTagsChange,
 	columns = [],
 	destinationIndex = 0,
+	columnCardCount = 1,
 	onMoveCard,
 }: TaskCardProps) {
+	const [moveAnnouncement, setMoveAnnouncement] = useState("");
 	const {
 		closeTagSelector,
 		isTagSelectorOpen,
@@ -89,6 +93,26 @@ export default function TaskCard({
 		if (draggedCardId) {
 			onMoveCard(draggedCardId, card.columnId, destinationIndex);
 		}
+	};
+
+	const moveWithinColumn = (destinationIndex: number) => {
+		if (!onMoveCard) return;
+
+		onMoveCard(card.id, card.columnId, destinationIndex);
+		setMoveAnnouncement(
+			`Moved ${card.title} to position ${destinationIndex + 1} of ${columnCardCount}.`,
+		);
+	};
+
+	const restoreMoveControlFocus = (cardId: EntityId) => {
+		window.requestAnimationFrame(() => {
+			const moveControl = Array.from(
+				document.querySelectorAll<HTMLSelectElement>(
+					"[data-card-move-control]",
+				),
+			).find((control) => control.dataset.cardMoveControl === cardId);
+			moveControl?.focus();
+		});
 	};
 
 	return (
@@ -188,6 +212,28 @@ export default function TaskCard({
 							}}
 						/>
 					)}
+					{onMoveCard && (
+						<div className="flex items-center gap-1">
+							<button
+								type="button"
+								aria-label={`Move ${card.title} earlier`}
+								disabled={destinationIndex <= 0}
+								onClick={() => moveWithinColumn(destinationIndex - 1)}
+								className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md text-[#6B7280] hover:bg-slate-100 hover:text-[#1E232A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+							>
+								<span aria-hidden="true">Up</span>
+							</button>
+							<button
+								type="button"
+								aria-label={`Move ${card.title} later`}
+								disabled={destinationIndex >= columnCardCount - 1}
+								onClick={() => moveWithinColumn(destinationIndex + 1)}
+								className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md text-[#6B7280] hover:bg-slate-100 hover:text-[#1E232A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+							>
+								<span aria-hidden="true">Down</span>
+							</button>
+						</div>
+					)}
 					{onMoveCard && destinationColumns.length > 0 && (
 						<select
 							aria-label={`Move task: ${card.title} to column`}
@@ -205,8 +251,10 @@ export default function TaskCard({
 										destinationColumnId,
 										destinationColumn.cardIds.length,
 									);
+									restoreMoveControlFocus(card.id);
 								}
 							}}
+							data-card-move-control={card.id}
 							className="max-w-28 rounded border border-[#E2E5E9] bg-white px-1.5 py-1 text-[11px] text-[#4B5563] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
 						>
 							<option value="">Move to column</option>
@@ -218,6 +266,9 @@ export default function TaskCard({
 						</select>
 					)}
 				</div>
+				<output aria-live="polite" className="sr-only">
+					{moveAnnouncement}
+				</output>
 
 				<div className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-[#6B7280]">
 					<svg

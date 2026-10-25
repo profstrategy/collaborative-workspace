@@ -129,14 +129,23 @@ export function isAppState(value: unknown): value is AppState {
 		}
 	}
 
+	const orderedCardIds = new Set<EntityId>();
 	for (const column of Object.values(columns)) {
 		const board = boards[column.boardId];
 		if (!board || !board.columnIds.includes(column.id)) return false;
 
-		if (
-			column.cardIds.some((cardId) => cards[cardId]?.columnId !== column.id)
-		) {
-			return false;
+		for (const [position, cardId] of column.cardIds.entries()) {
+			const card = cards[cardId];
+			if (
+				!card ||
+				orderedCardIds.has(cardId) ||
+				card.boardId !== column.boardId ||
+				card.columnId !== column.id ||
+				card.position !== position
+			) {
+				return false;
+			}
+			orderedCardIds.add(cardId);
 		}
 	}
 
@@ -147,7 +156,7 @@ export function isAppState(value: unknown): value is AppState {
 			!board ||
 			!column ||
 			column.boardId !== board.id ||
-			!column.cardIds.includes(card.id)
+			!orderedCardIds.has(card.id)
 		) {
 			return false;
 		}

@@ -88,7 +88,7 @@ function createStorage(initialValues = {}) {
 	};
 }
 
-function useStorage(storage) {
+function setBrowserStorage(storage) {
 	globalThis.window = { localStorage: storage };
 }
 
@@ -112,7 +112,7 @@ afterEach(() => {
 
 test("load reports empty storage without creating a value", () => {
 	const storage = createStorage();
-	useStorage(storage);
+	setBrowserStorage(storage);
 
 	assert.deepEqual(load(), { status: "empty" });
 	assert.equal(storage.values.size, 0);
@@ -120,7 +120,7 @@ test("load reports empty storage without creating a value", () => {
 
 test("save stores all entity collections and load restores the full state", () => {
 	const storage = createStorage();
-	useStorage(storage);
+	setBrowserStorage(storage);
 	const state = createState();
 
 	assert.equal(save(state), true);
@@ -141,7 +141,7 @@ test("save stores all entity collections and load restores the full state", () =
 
 test("load rejects malformed JSON and leaves the saved value untouched", () => {
 	const storage = createStorage({ "talenvo:app-state": "{" });
-	useStorage(storage);
+	setBrowserStorage(storage);
 
 	silenceWarnings(() => {
 		assert.deepEqual(load(), { status: "invalid" });
@@ -155,7 +155,7 @@ test("load rejects invalid entities and broken relationships", () => {
 	const storage = createStorage({
 		"talenvo:app-state": JSON.stringify(invalidState),
 	});
-	useStorage(storage);
+	setBrowserStorage(storage);
 
 	silenceWarnings(() => {
 		assert.deepEqual(load(), { status: "invalid" });
@@ -166,8 +166,50 @@ test("load rejects invalid entities and broken relationships", () => {
 	);
 });
 
+test("load rejects inconsistent card ordering and leaves stored data untouched", () => {
+	const invalidStates = [
+		{
+			name: "a card position that differs from its array index",
+			mutate(state) {
+				state.cards.card1.position = 1;
+			},
+		},
+		{
+			name: "a non-contiguous card position",
+			mutate(state) {
+				state.cards.card2.position = 3;
+			},
+		},
+		{
+			name: "a card listed more than once",
+			mutate(state) {
+				state.columns.column1.cardIds = ["card1", "card1", "card2"];
+			},
+		},
+		{
+			name: "a card missing from its column ordering",
+			mutate(state) {
+				state.columns.column1.cardIds = ["card1"];
+			},
+		},
+	];
+
+	for (const { name, mutate } of invalidStates) {
+		const state = createState();
+		mutate(state);
+		const serializedState = JSON.stringify(state);
+		const storage = createStorage({ "talenvo:app-state": serializedState });
+		setBrowserStorage(storage);
+
+		silenceWarnings(() => {
+			assert.deepEqual(load(), { status: "invalid" }, name);
+		});
+		assert.equal(storage.getItem("talenvo:app-state"), serializedState, name);
+	}
+});
+
 test("storage read, write, and clear failures do not throw", () => {
-	useStorage({
+	setBrowserStorage({
 		getItem() {
 			throw new Error("blocked");
 		},
@@ -224,7 +266,7 @@ test("hydration does not overwrite invalid or unavailable saved data", () => {
 
 test("reducer state changes can be saved and restored", () => {
 	const storage = createStorage();
-	useStorage(storage);
+	setBrowserStorage(storage);
 	const board = { ...createState().boards.board1, columnIds: [] };
 	const nextState = appReducer(initialAppState, {
 		type: "board/created",
@@ -240,7 +282,7 @@ test("reducer state changes can be saved and restored", () => {
 
 test("moved cards and their tags remain valid when saved and restored", () => {
 	const storage = createStorage();
-	useStorage(storage);
+	setBrowserStorage(storage);
 	const state = createState();
 	const destinationColumn = {
 		id: "column2",

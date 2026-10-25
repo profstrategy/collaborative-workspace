@@ -11,12 +11,13 @@ Application data is stored in the current browser profile. The repository does n
 - Create, edit, and delete columns and cards; column and card deletion also removes related entities.
 - Assign the supported tag statuses: Pending, Ongoing, Completed, and Bugs.
 - Set optional card due dates.
+- Reorder cards with native HTML drag-and-drop, including moving cards between columns. Keyboard-accessible per-card controls reorder cards within a column or move them to another column.
 - Write and preview Markdown descriptions with GitHub-Flavored Markdown support.
 - Validate board, column, card, date, and tag-selection form input with Zod.
 - Persist boards, columns, cards, and tags in `localStorage`; restore and validate state when the application starts.
 - Use responsive column scrolling, semantic controls, keyboard focus indicators, and accessible modal and form labels.
 
-Drag-and-drop, authentication, multi-user collaboration, and remote synchronization are not implemented.
+Authentication, threaded comments, multi-user collaboration, remote synchronization, undo/redo, and server-backed persistence are not implemented. Card movement is local to the current browser profile.
 
 ## Technology Stack
 
@@ -58,7 +59,7 @@ No environment variables are referenced by the current application code. There i
 | `/` | Redirects to `/workspace`. |
 | `/workspace` | Displays boards and board create/edit/delete actions. |
 | `/board/[boardId]` | Displays the selected board and its columns/cards. |
-| `/board` | Displays an empty-state message directing users to the workspace. It is not a board index. |
+| `/board` | Displays an empty-state message directing users to the workspace; it is not a board index. |
 
 ## Available Scripts
 
@@ -69,30 +70,35 @@ No environment variables are referenced by the current application code. There i
 | `npm run start` | Serve a previously built application. |
 | `npm run lint` | Run `biome check` on the repository. |
 | `npm run format` | Run `biome format --write` on the repository. |
+| `npm run test` | Start Vitest in watch mode. |
+| `npm run test:run` | Run the Vitest suite once. |
 
-There is no `test` script. The current storage-adapter test can be run directly with Node 24's TypeScript type stripping:
+The storage-adapter tests use Node's built-in test runner and can be run separately with Node 24's TypeScript type stripping:
 
 ```bash
-node --experimental-strip-types --test tests/services/storageAdapter.test.mjs
+node --experimental-strip-types --test services/storageAdapter.test.mjs
 ```
 
-TypeScript can be checked separately with:
+TypeScript can be checked separately (without writing incremental build metadata) with:
 
 ```bash
-npm exec -- tsc --noEmit
+npm exec -- tsc --noEmit --incremental false
 ```
 
 ## Project Structure
 
 ```text
-app/                         App Router pages, layouts, and loading UI
-components/layout/            Shared navigation; shell/header placeholders
-components/ui/                Reusable buttons, fields, dialogs, and Markdown UI
-features/board/               Board, column, card, tag, validation, and feature hooks
-features/workspace/           Workspace dashboard, board cards, and board forms
-services/storageAdapter.ts    Browser-safe persistence and stored-state validation
-state/                        Domain types, provider, reducer, actions, initial state
-tests/                         Adapter test; component, reducer, and integration test placeholders
+app/                          App Router pages, layouts, and route loading UI
+components/layout/             Shared navigation
+components/ui/                 Reusable buttons, fields, dialogs, and Markdown UI
+features/board/                Board, column, card, tag, validation, and feature hooks
+features/workspace/            Workspace dashboard, board cards, and board forms
+services/storageAdapter.ts     Browser-safe persistence and stored-state validation
+services/storageAdapter.test.mjs Node tests for storage and persistence round-trips
+state/                         Domain types, provider, reducer, actions, initial state, reducer tests
+tests/components/              Vitest component tests
+vite.config.mts                Vitest configuration and @/ path alias
+vitest.setup.ts                Testing Library setup
 ```
 
 Important files include `state/domain.types.ts` for persisted entity types, `state/app.actions.ts` and `state/app.reducer.ts` for typed state transitions, and `state/AppProvider.tsx` for application state and persistence integration.
@@ -101,7 +107,7 @@ Important files include `state/domain.types.ts` for persisted entity types, `sta
 
 Boards, columns, cards, and tags are stored in normalized records in `AppState`. Boards refer to columns by `columnIds`; columns refer to cards by `cardIds`; cards refer to tags by `tagIds`. Each column/card/tag also records its parent IDs.
 
-UI components call feature hooks. The hooks dispatch typed actions to the reducer, which returns the next `AppState`. `AppProvider` owns that state and persists successful state changes through the storage adapter.
+UI components call feature hooks. The hooks dispatch typed actions to the reducer, which returns the next `AppState`. `AppProvider` owns that state and persists state changes through the storage adapter. On board pages, `TaskCard` and `KanbanColumn` handle native drag-and-drop and invoke the `handleMoveCard` callback from `useBoard`; the reducer updates column membership and card positions. `column.cardIds` is the canonical card order, with `card.position` synchronized to each card's array index. Cards provide keyboard controls to move earlier/later or select another column.
 
 ```mermaid
 flowchart LR
@@ -135,9 +141,17 @@ Persistence is browser-local and origin-specific. Clearing browser data removes 
 
 Zod schemas in `features/workspace/validation.ts` and `features/board/validation.ts` validate form values before feature hooks dispatch mutations. `node:test` covers storage load/save, complete state round-tripping, dates and nullable values, invalid JSON/state, storage failures, hydration policy, and reducer-to-storage persistence.
 
-The repository also contains component and integration test files, but they are empty and no framework or test script is configured for them. The storage test uses Node's built-in test runner and `--experimental-strip-types`; it was verified with Node `v24.21.0`.
+Vitest covers the reducer's board, column, card, tag, and card-movement operations, plus components including Button, ConfirmDialog, ErrorMessage, Input, KanbanColumn, MarkdownPreview, Modal, Sidebar, TaskCard, and Textarea. The separate Node storage tests cover load/save, state validation, storage failures, hydration policy, and reducer-to-storage round-trips. There are no integration workflow tests, browser automation tests, or dedicated performance benchmarks.
 
-`npm run lint` invokes Biome. The current checkout has no `biome.json`, so Biome's default CSS parser reports the Tailwind-specific `@plugin` and `@theme` directives in `app/globals.css`; restore/configure Tailwind directive parsing for a clean repository-wide lint run. Scoped checks of the changed TypeScript files are available with Biome.
+`npm run lint` invokes Biome using the checked-in `biome.json`, which enables Tailwind directive parsing. TypeScript strict mode is enabled in `tsconfig.json`; there is no dedicated type-check script, so run `npm exec -- tsc --noEmit --incremental false` directly.
+
+## Current Limitations
+
+- Persistence is `localStorage` scoped to the current browser profile and origin. It is not a shared server data source and does not synchronize between users, devices, or browser profiles.
+- No API persistence, mock WebSocket transport, optimistic failure reconciliation, comments, undo/redo, or authentication is implemented.
+- There is no error-boundary route, toast notification system, or shared Badge component.
+- Dark colors follow the operating-system color-scheme preference in the global stylesheet; a theme toggle and consistently themed component surfaces are not implemented.
+- Performance at large board sizes has not been benchmarked, and no virtualization is implemented.
 
 ## Deployment
 

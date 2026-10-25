@@ -5,6 +5,7 @@ import { useState } from "react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import MarkdownPreview from "@/components/ui/MarkdownPreview";
+import PersistenceStatus from "@/components/ui/PersistenceStatus";
 import { useAppProvider } from "@/state/AppProvider";
 import type { BoardCard, BoardColumn } from "@/state/domain.types";
 import { useBoard } from "../hooks/useBoard";
@@ -28,7 +29,7 @@ export interface BoardPageClientProps {
 }
 
 export default function BoardPageClient({ boardId }: BoardPageClientProps) {
-	const { state } = useAppProvider();
+	const { state, persistence, retrySave } = useAppProvider();
 	const {
 		handleCreateCard,
 		handleCreateColumn,
@@ -131,26 +132,29 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 							</div>
 						)}
 					</div>
-					<Button
-						variant="white"
-						onClick={() => {
-							setEditingColumn(undefined);
-							setIsColumnModalOpen(true);
-						}}
-					>
-						<svg
-							aria-hidden="true"
-							focusable="false"
-							className="h-4 w-4"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="2"
-							viewBox="0 0 24 24"
+					<div className="flex items-center gap-3">
+						<PersistenceStatus persistence={persistence} onRetry={retrySave} />
+						<Button
+							variant="white"
+							onClick={() => {
+								setEditingColumn(undefined);
+								setIsColumnModalOpen(true);
+							}}
 						>
-							<path d="M12 5v14M5 12h14" />
-						</svg>
-						Add column
-					</Button>
+							<svg
+								aria-hidden="true"
+								focusable="false"
+								className="h-4 w-4"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+								viewBox="0 0 24 24"
+							>
+								<path d="M12 5v14M5 12h14" />
+							</svg>
+							Add column
+						</Button>
+					</div>
 				</header>
 
 				{columns.length > 0 ? (

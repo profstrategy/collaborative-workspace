@@ -26,7 +26,6 @@ const NOW = "2026-01-01T00:00:00.000Z";
 const PENDING = "Pending" as Tag["status"];
 const ONGOING = "Ongoing" as Tag["status"];
 const COMPLETED = "Completed" as Tag["status"];
-const BUGS = "Bugs" as Tag["status"];
 
 const makeBoard = (overrides: Partial<Board> = {}): Board => ({
 	...initialBoard,
@@ -209,6 +208,16 @@ describe("appReducer: general", () => {
 			{
 				type: "card/updated",
 				payload: { id: "k1", changes: { title: "Z", position: 2 } },
+			},
+			{
+				type: "card/moved",
+				payload: {
+					cardId: "k1",
+					sourceColumnId: "c1",
+					destinationColumnId: "c2",
+					destinationIndex: 0,
+					movedAt: NOW,
+				},
 			},
 			{
 				type: "card/tags-updated",
@@ -886,13 +895,13 @@ describe("card/updated", () => {
 			expect(result.columns.c1?.cardIds).toEqual(["k1", "k2", "k3"]);
 		});
 
-		it("sets position to null without reordering", () => {
+		it("keeps the canonical position when null is supplied without reordering", () => {
 			const result = reduce(seedState(), {
 				type: "card/updated",
 				payload: { id: "k1", changes: { position: null } },
 			});
 
-			expect(result.cards.k1?.position).toBeNull();
+			expect(result.cards.k1?.position).toBe(0);
 			expect(result.columns.c1?.cardIds).toEqual(["k1", "k2", "k3"]);
 		});
 
@@ -1146,55 +1155,144 @@ describe("card/tags-updated", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("card/moved", () => {
-	it("reorders a card within its column and refreshes positions", () => {
+	it.each([
+		{
+			cardId: "k3",
+			destinationIndex: 0,
+			cardIds: ["k3", "k1", "k2"],
+		},
+		{
+			cardId: "k1",
+			destinationIndex: 1,
+			cardIds: ["k2", "k1", "k3"],
+		},
+		{
+			cardId: "k1",
+			destinationIndex: 2,
+			cardIds: ["k2", "k3", "k1"],
+		},
+	])("moves a card to same-column index $destinationIndex and synchronizes positions", ({
+		cardId,
+		destinationIndex,
+		cardIds,
+	}) => {
 		const state = seedState();
 		const result = reduce(state, {
 			type: "card/moved",
 			payload: {
-				cardId: "k1",
+				cardId,
 				sourceColumnId: "c1",
 				destinationColumnId: "c1",
-				destinationIndex: 2,
+				destinationIndex,
 				movedAt: NOW,
 			},
 		});
 
-		expect(result.columns.c1?.cardIds).toEqual(["k2", "k3", "k1"]);
-		expect(result.cards.k1?.position).toBe(2);
-		expect(result.cards.k2?.position).toBe(0);
-		expect(result.cards.k3?.position).toBe(1);
-		expect(result.cards.k1?.updatedAt).toBe(NOW);
+		expect(result.columns.c1?.cardIds).toEqual(cardIds);
+		cardIds.forEach((cardId, index) => {
+			expect(result.cards[cardId]?.position).toBe(index);
+		});
+		expect(result.cards[cardId]?.updatedAt).toBe(NOW);
 		expect(result.columns.c2).toBe(state.columns.c2);
 	});
 
-	it("moves a card between columns and keeps its tags aligned", () => {
+	it("returns the same state for a same-position move", () => {
 		const state = seedState();
+		const result = reduce(state, {
+			type: "card/moved",
+			payload: {
+				cardId: "k2",
+				sourceColumnId: "c1",
+				destinationColumnId: "c1",
+				destinationIndex: 1,
+				movedAt: NOW,
+			},
+		});
+
+		expect(result).toBe(state);
+	});
+
+	it.each([
+		{ destinationIndex: 0, cardIds: ["k1", "k4", "k6", "k7"] },
+		{ destinationIndex: 2, cardIds: ["k4", "k6", "k1", "k7"] },
+		{ destinationIndex: 3, cardIds: ["k4", "k6", "k7", "k1"] },
+	])("moves a card to destination index $destinationIndex", ({
+		destinationIndex,
+		cardIds,
+	}) => {
+		const state = seedState();
+		state.columns.c2.cardIds = ["k4", "k6", "k7"];
+		state.cards.k6 = makeCard({
+			id: "k6",
+			boardId: "b1",
+			columnId: "c2",
+			position: 1,
+		});
+		state.cards.k7 = makeCard({
+			id: "k7",
+			boardId: "b1",
+			columnId: "c2",
+			position: 2,
+		});
 		const result = reduce(state, {
 			type: "card/moved",
 			payload: {
 				cardId: "k1",
 				sourceColumnId: "c1",
 				destinationColumnId: "c2",
+				destinationIndex,
+				movedAt: NOW,
+			},
+		});
+
+		expect(result.columns.c1?.cardIds).toEqual(["k2", "k3"]);
+		expect(result.columns.c2?.cardIds).toEqual(cardIds);
+		expect(result.cards.k1?.columnId).toBe("c2");
+		expect(result.cards.k2?.position).toBe(0);
+		expect(result.cards.k3?.position).toBe(1);
+		cardIds.forEach((cardId, index) => {
+			expect(result.cards[cardId]?.position).toBe(index);
+		});
+		expect(result.cards.k1?.updatedAt).toBe(NOW);
+		expect(result.tags.t1?.columnId).toBe("c2");
+		expect(result.tags.t2?.columnId).toBe("c2");
+		expect(state.columns.c1?.cardIds).toEqual(["k1", "k2", "k3"]);
+		expect(state.tags.t1?.columnId).toBe("c1");
+		expect(result.tags.t3).toBe(state.tags.t3);
+		expect(result.cards.k5).toBe(state.cards.k5);
+	});
+
+	it("moves a card into an empty destination column", () => {
+		const state = seedState();
+		state.boards.b1?.columnIds.push("c4");
+		state.columns.c4 = makeColumn({
+			id: "c4",
+			boardId: "b1",
+			title: "New",
+			cardIds: [],
+		});
+		const result = reduce(state, {
+			type: "card/moved",
+			payload: {
+				cardId: "k1",
+				sourceColumnId: "c1",
+				destinationColumnId: "c4",
 				destinationIndex: 0,
 				movedAt: NOW,
 			},
 		});
 
 		expect(result.columns.c1?.cardIds).toEqual(["k2", "k3"]);
-		expect(result.columns.c2?.cardIds).toEqual(["k1", "k4"]);
-		expect(result.cards.k1?.columnId).toBe("c2");
+		expect(result.columns.c4?.cardIds).toEqual(["k1"]);
+		expect(result.cards.k1?.columnId).toBe("c4");
 		expect(result.cards.k1?.position).toBe(0);
 		expect(result.cards.k2?.position).toBe(0);
 		expect(result.cards.k3?.position).toBe(1);
-		expect(result.cards.k4?.position).toBe(1);
 		expect(result.cards.k1?.updatedAt).toBe(NOW);
-		expect(result.tags.t1?.columnId).toBe("c2");
-		expect(result.tags.t2?.columnId).toBe("c2");
-		expect(state.columns.c1?.cardIds).toEqual(["k1", "k2", "k3"]);
-		expect(state.tags.t1?.columnId).toBe("c1");
+		expect(result.tags.t1?.columnId).toBe("c4");
 	});
 
-	it("rejects a stale source, a cross-board destination, and invalid indexes", () => {
+	it("rejects invalid indexes, missing entities, stale sources, and cross-board moves", () => {
 		const state = seedState();
 		const basePayload = {
 			cardId: "k1",
@@ -1226,6 +1324,48 @@ describe("card/moved", () => {
 			reduce(state, {
 				type: "card/moved",
 				payload: { ...basePayload, destinationIndex: 1.5 },
+			}),
+		).toBe(state);
+		expect(
+			reduce(state, {
+				type: "card/moved",
+				payload: { ...basePayload, destinationIndex: 2 },
+			}),
+		).toBe(state);
+		expect(
+			reduce(state, {
+				type: "card/moved",
+				payload: { ...basePayload, cardId: "missing" },
+			}),
+		).toBe(state);
+		expect(
+			reduce(state, {
+				type: "card/moved",
+				payload: { ...basePayload, sourceColumnId: "missing" },
+			}),
+		).toBe(state);
+		expect(
+			reduce(state, {
+				type: "card/moved",
+				payload: { ...basePayload, destinationColumnId: "missing" },
+			}),
+		).toBe(state);
+	});
+
+	it("rejects a move when an affected column has inconsistent membership", () => {
+		const state = seedState();
+		state.columns.c1?.cardIds.push("k1");
+
+		expect(
+			reduce(state, {
+				type: "card/moved",
+				payload: {
+					cardId: "k1",
+					sourceColumnId: "c1",
+					destinationColumnId: "c2",
+					destinationIndex: 0,
+					movedAt: NOW,
+				},
 			}),
 		).toBe(state);
 	});

@@ -1,10 +1,9 @@
 import type { AppAction } from "./app.actions";
 import type { AppState, BoardCard, EntityId, Tag } from "./domain.types";
 
-
 function reindexCards(
 	cards: Record<EntityId, BoardCard>,
-	cardIds: EntityId[],
+	cardIds: readonly EntityId[],
 	columnId: EntityId,
 ): Record<EntityId, BoardCard> {
 	const nextCards = { ...cards };
@@ -22,6 +21,25 @@ function reindexCards(
 	});
 
 	return nextCards;
+}
+
+function hasConsistentColumnCards(
+	state: AppState,
+	columnId: EntityId,
+	cardIds: readonly EntityId[],
+): boolean {
+	const column = state.columns[columnId];
+	if (!column || new Set(cardIds).size !== cardIds.length) return false;
+
+	return cardIds.every((id, index) => {
+		const card = state.cards[id];
+		return (
+			card !== undefined &&
+			card.boardId === column.boardId &&
+			card.columnId === column.id &&
+			card.position === index
+		);
+	});
 }
 
 function moveCard(
@@ -56,36 +74,43 @@ function moveCard(
 		card.boardId !== source.boardId ||
 		!Number.isInteger(destinationIndex) ||
 		destinationIndex < 0 ||
+		!hasConsistentColumnCards(state, sourceColumnId, source.cardIds) ||
+		!hasConsistentColumnCards(
+			state,
+			destinationColumnId,
+			destination.cardIds,
+		) ||
 		!source.cardIds.includes(cardId)
-	) {
-		return state;
-	}
-
-	// A different destination must not already contain the card.
-	if (
-		sourceColumnId !== destinationColumnId &&
-		destination.cardIds.includes(cardId)
 	) {
 		return state;
 	}
 
 	const sourceCardIds = source.cardIds.filter((id) => id !== cardId);
 
-	// Remove the card first, then calculate its final insertion index.
 	const destinationBaseIds =
 		sourceColumnId === destinationColumnId
 			? sourceCardIds
 			: [...destination.cardIds];
 
-	const insertionIndex = Math.min(
-		destinationIndex,
-		destinationBaseIds.length,
-	);
+	if (
+		destinationIndex > destinationBaseIds.length ||
+		(sourceColumnId === destinationColumnId &&
+			destinationIndex >= source.cardIds.length)
+	) {
+		return state;
+	}
+
+	if (
+		sourceColumnId === destinationColumnId &&
+		source.cardIds[destinationIndex] === cardId
+	) {
+		return state;
+	}
 
 	const destinationCardIds = [
-		...destinationBaseIds.slice(0, insertionIndex),
+		...destinationBaseIds.slice(0, destinationIndex),
 		cardId,
-		...destinationBaseIds.slice(insertionIndex),
+		...destinationBaseIds.slice(destinationIndex),
 	];
 
 	const columns = {
@@ -109,22 +134,10 @@ function moveCard(
 	let cards = state.cards;
 
 	if (sourceColumnId === destinationColumnId) {
-		cards = reindexCards(
-			state.cards,
-			destinationCardIds,
-			destinationColumnId,
-		);
+		cards = reindexCards(state.cards, destinationCardIds, destinationColumnId);
 	} else {
-		cards = reindexCards(
-			state.cards,
-			sourceCardIds,
-			sourceColumnId,
-		);
-		cards = reindexCards(
-			cards,
-			destinationCardIds,
-			destinationColumnId,
-		);
+		cards = reindexCards(state.cards, sourceCardIds, sourceColumnId);
+		cards = reindexCards(cards, destinationCardIds, destinationColumnId);
 	}
 
 	cards = {
@@ -156,7 +169,6 @@ function moveCard(
 		tags,
 	};
 }
-
 
 export function appReducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
@@ -547,12 +559,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 				title,
 				description,
 				dueDate: changes.dueDate === undefined ? card.dueDate : changes.dueDate,
-				position:
-					changes.position === undefined
-						? card.position
-						: nextPosition === null
-							? null
-							: nextCardIds.indexOf(cardId),
+				position: nextCardIds.indexOf(cardId),
 			};
 
 			return {
@@ -684,7 +691,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 			};
 		}
 
-			case 'card/moved':
+		case "card/moved":
 			return moveCard(state, action.payload);
 		default:
 			return state;
