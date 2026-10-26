@@ -12,6 +12,7 @@ import { useBoard } from "../hooks/useBoard";
 import type { CardFormValues } from "../validation";
 import CardModal from "./CardModal";
 import ColumnModal from "./ColumnModal";
+import CommentThread from "./CommentThread";
 import KanbanColumn from "./KanbanColumn";
 
 type PendingDeletion =
@@ -43,6 +44,7 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 	const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
 	const [editingColumn, setEditingColumn] = useState<BoardColumn>();
 	const [cardModalTarget, setCardModalTarget] = useState<CardModalTarget>();
+	const [commentsCardId, setCommentsCardId] = useState<string>();
 	const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion>();
 
 	const board = state.boards[boardId];
@@ -72,6 +74,13 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 		(card) => card.boardId === board.id,
 	);
 	const tags = Object.values(state.tags);
+	const commentCounts = new Map<string, number>();
+	for (const comment of Object.values(state.comments)) {
+		commentCounts.set(
+			comment.cardId,
+			(commentCounts.get(comment.cardId) ?? 0) + 1,
+		);
+	}
 
 	const closeColumnModal = () => {
 		setIsColumnModalOpen(false);
@@ -111,6 +120,7 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 	const cardColumn = cardModalTarget
 		? state.columns[cardModalTarget.card?.columnId ?? cardModalTarget.column.id]
 		: undefined;
+	const commentsCard = commentsCardId ? state.cards[commentsCardId] : undefined;
 
 	return (
 		<main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
@@ -171,6 +181,8 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 									cards={cards}
 									tags={tags}
 									onMoveCard={handleMoveCard}
+									commentCounts={commentCounts}
+									onShowComments={(card) => setCommentsCardId(card.id)}
 									onEditColumn={setEditingColumn}
 									onDeleteColumn={(selectedColumn) =>
 										setPendingDeletion({
@@ -234,6 +246,13 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 					onSubmit={handleCardSubmit}
 				/>
 			)}
+			{commentsCard && (
+				<CommentThread
+					cardId={commentsCard.id}
+					cardTitle={commentsCard.title}
+					onClose={() => setCommentsCardId(undefined)}
+				/>
+			)}
 			<ConfirmDialog
 				open={Boolean(pendingDeletion)}
 				title={
@@ -241,8 +260,8 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 				}
 				description={
 					pendingDeletion?.kind === "column"
-						? `Delete ${pendingDeletion.column.title} and all its cards and tags? This action cannot be undone.`
-						: `Delete ${pendingDeletion?.kind === "card" ? pendingDeletion.card.title : "this card"}? This action cannot be undone.`
+						? `Delete ${pendingDeletion.column.title} and all its cards, tags, and comments? This action cannot be undone.`
+						: `Delete ${pendingDeletion?.kind === "card" ? pendingDeletion.card.title : "this card"} and its comments and replies? This action cannot be undone.`
 				}
 				onCancel={() => setPendingDeletion(undefined)}
 				onConfirm={() => {

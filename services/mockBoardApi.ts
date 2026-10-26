@@ -55,6 +55,7 @@ export function createMockBoardApi(
 		columns: {},
 		cards: {},
 		tags: {},
+		comments: {},
 	};
 
 	let snapshot = cloneState(initialState);

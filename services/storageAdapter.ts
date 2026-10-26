@@ -3,12 +3,15 @@ import type {
 	Board,
 	BoardCard,
 	BoardColumn,
+	CardComment,
 	EntityId,
 	Tag,
 } from "@/state/domain.types";
 
 const STORAGE_KEY = "talenvo:app-state";
 const TAG_STATUSES = ["Pending", "Ongoing", "Completed", "Bugs"] as const;
+const MAX_COMMENT_DEPTH = 5;
+const MAX_COMMENT_BODY_LENGTH = 5000;
 
 export type StorageLoadResult =
 	| { status: "loaded"; state: AppState }
@@ -96,6 +99,44 @@ function isTag(value: unknown, id: EntityId): value is Tag {
 	);
 }
 
+function isValidTimestamp(value: string) {
+	const timestamp = Date.parse(value);
+	return (
+		value.length > 0 &&
+		Number.isFinite(timestamp) &&
+		new Date(timestamp).toISOString() === value
+	);
+}
+
+function isComment(value: unknown, id: EntityId): value is CardComment {
+	if (!isRecord(value)) return false;
+	if (
+		value.id !== id ||
+		typeof value.cardId !== "string" ||
+		!(
+			value.parentCommentId === null ||
+			typeof value.parentCommentId === "string"
+		) ||
+		typeof value.body !== "string" ||
+		value.body.length === 0 ||
+		value.body !== value.body.trim() ||
+		value.body.length > MAX_COMMENT_BODY_LENGTH ||
+		typeof value.authorName !== "string" ||
+		value.authorName.length === 0 ||
+		value.authorName !== value.authorName.trim() ||
+		value.authorName.length > 80 ||
+		typeof value.createdAt !== "string" ||
+		typeof value.updatedAt !== "string" ||
+		!isValidTimestamp(value.createdAt) ||
+		!isValidTimestamp(value.updatedAt) ||
+		Date.parse(value.updatedAt) < Date.parse(value.createdAt)
+	) {
+		return false;
+	}
+
+	return true;
+}
+
 function isEntityRecord<T>(
 	value: unknown,
 	guard: (entity: unknown, id: EntityId) => entity is T,
@@ -109,12 +150,13 @@ function isEntityRecord<T>(
 export function isAppState(value: unknown): value is AppState {
 	if (!isRecord(value)) return false;
 
-	const { boards, columns, cards, tags } = value;
+	const { boards, columns, cards, tags, comments } = value;
 	if (
 		!isEntityRecord(boards, isBoard) ||
 		!isEntityRecord(columns, isBoardColumn) ||
 		!isEntityRecord(cards, isBoardCard) ||
-		!isEntityRecord(tags, isTag)
+		!isEntityRecord(tags, isTag) ||
+		!isEntityRecord(comments, isComment)
 	) {
 		return false;
 	}
@@ -183,6 +225,23 @@ export function isAppState(value: unknown): value is AppState {
 		}
 	}
 
+	for (const comment of Object.values(comments)) {
+		if (!cards[comment.cardId]) return false;
+		let currentId: EntityId | null = comment.id;
+		let depth = 0;
+		const visited = new Set<EntityId>();
+		while (currentId !== null) {
+			if (visited.has(currentId)) return false;
+			visited.add(currentId);
+			const current: CardComment | undefined = comments[currentId];
+			if (!current || current.cardId !== comment.cardId) return false;
+			if (current.parentCommentId === null) break;
+			depth += 1;
+			if (depth > MAX_COMMENT_DEPTH) return false;
+			currentId = current.parentCommentId;
+		}
+	}
+
 	return true;
 }
 
@@ -201,6 +260,10 @@ export function load(): StorageLoadResult {
 		} catch {
 			console.warn("[storageAdapter] Stored app state is not valid JSON.");
 			return { status: "invalid" };
+		}
+
+		if (isRecord(parsedValue) && !("comments" in parsedValue)) {
+			parsedValue = { ...parsedValue, comments: {} };
 		}
 
 		if (!isAppState(parsedValue)) {

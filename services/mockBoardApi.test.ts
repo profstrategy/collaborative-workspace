@@ -41,6 +41,7 @@ const createState = (overrides: Partial<AppState> = {}): AppState => ({
 		} satisfies BoardCard,
 	},
 	tags: {},
+	comments: {},
 	...overrides,
 });
 
@@ -59,6 +60,17 @@ describe("createMockBoardApi", () => {
 					title: "Board 2",
 				},
 			},
+			comments: {
+				comment: {
+					id: "comment",
+					cardId: "card-1",
+					parentCommentId: null,
+					body: "Persisted comment",
+					authorName: "Demo user",
+					createdAt: "2026-01-02T00:00:00.000Z",
+					updatedAt: "2026-01-02T00:00:00.000Z",
+				},
+			},
 		});
 		const result = await api.saveState(nextState);
 
@@ -67,6 +79,7 @@ describe("createMockBoardApi", () => {
 		if (!result.ok) return;
 		expect(result.revision).toBe(1);
 		expect(api.getState().boards["board-1"].title).toBe("Board 2");
+		expect(api.getState().comments.comment.body).toBe("Persisted comment");
 		const stored = await api.loadInitialState();
 		expect(stored.state).toEqual(api.getState());
 	});

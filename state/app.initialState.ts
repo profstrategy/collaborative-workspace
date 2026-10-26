@@ -53,6 +53,7 @@ export const initialAppState: AppState = {
 	columns: {},
 	cards: {},
 	tags: {},
+	comments: {},
 
 	// ui: {
 	//   createBoardModalOpen: false,

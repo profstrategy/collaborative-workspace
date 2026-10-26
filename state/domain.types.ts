@@ -38,9 +38,20 @@ export interface Tag {
 	color: string;
 }
 
+export interface CardComment {
+	id: EntityId;
+	cardId: EntityId;
+	parentCommentId: EntityId | null;
+	body: string;
+	authorName: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
 export interface AppState {
 	boards: Record<EntityId, Board>;
 	columns: Record<EntityId, BoardColumn>;
 	cards: Record<EntityId, BoardCard>;
 	tags: Record<EntityId, Tag>;
+	comments: Record<EntityId, CardComment>;
 }

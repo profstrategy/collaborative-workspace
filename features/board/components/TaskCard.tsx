@@ -27,6 +27,8 @@ export interface TaskCardProps {
 		destinationColumnId: EntityId,
 		destinationIndex: number,
 	) => void;
+	commentCount?: number;
+	onShowComments?: (card: Task) => void;
 }
 
 function formatDueDate(value: string | null) {
@@ -56,6 +58,8 @@ export default function TaskCard({
 	destinationIndex = 0,
 	columnCardCount = 1,
 	onMoveCard,
+	commentCount = 0,
+	onShowComments,
 }: TaskCardProps) {
 	const [moveAnnouncement, setMoveAnnouncement] = useState("");
 	const {
@@ -264,6 +268,19 @@ export default function TaskCard({
 								</option>
 							))}
 						</select>
+					)}
+					{onShowComments && (
+						<button
+							type="button"
+							aria-label={`Comments for ${card.title}: ${commentCount}`}
+							onClick={() => onShowComments(card)}
+							className="inline-flex min-h-9 items-center gap-1 rounded-md px-2 text-xs font-medium text-blue-800 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+						>
+							<span aria-hidden="true">Comments</span>
+							<span className="rounded-full border border-slate-300 px-1.5 py-0.5">
+								{commentCount}
+							</span>
+						</button>
 					)}
 				</div>
 				<output aria-live="polite" className="sr-only">

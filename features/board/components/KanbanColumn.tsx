@@ -28,6 +28,8 @@ export interface KanbanColumnProps {
 		destinationColumnId: EntityId,
 		destinationIndex: number,
 	) => void;
+	commentCounts?: ReadonlyMap<EntityId, number>;
+	onShowComments?: (card: BoardCard) => void;
 }
 
 export default function KanbanColumn({
@@ -42,6 +44,8 @@ export default function KanbanColumn({
 	onDeleteCard,
 	onTagsChange,
 	onMoveCard,
+	commentCounts,
+	onShowComments,
 }: KanbanColumnProps) {
 	const headingId = useId();
 	const {
@@ -180,6 +184,8 @@ export default function KanbanColumn({
 								destinationIndex={index}
 								columnCardCount={columnCards.length}
 								onMoveCard={onMoveCard}
+								commentCount={commentCounts?.get(card.id) ?? 0}
+								onShowComments={onShowComments}
 								onTagsChange={
 									onTagsChange
 										? (statuses) => onTagsChange(card, statuses)

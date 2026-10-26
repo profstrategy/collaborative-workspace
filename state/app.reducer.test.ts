@@ -13,6 +13,7 @@ import type {
 	Board,
 	BoardCard,
 	BoardColumn,
+	CardComment,
 	Tag,
 } from "./domain.types";
 
@@ -49,6 +50,17 @@ const makeCard = (overrides: Partial<BoardCard> = {}): BoardCard => ({
 const makeTag = (overrides: Partial<Tag> = {}): Tag => ({
 	...initialTag,
 	color: "#000000",
+	...overrides,
+});
+
+const makeComment = (overrides: Partial<CardComment> = {}): CardComment => ({
+	id: "comment-1",
+	cardId: "k1",
+	parentCommentId: null,
+	body: "A comment",
+	authorName: "Demo user",
+	createdAt: OLD,
+	updatedAt: OLD,
 	...overrides,
 });
 
@@ -140,6 +152,7 @@ function seedState(): AppState {
 			t4: makeTag({ id: "t4", cardId: "k4", columnId: "c2", status: PENDING }),
 			t5: makeTag({ id: "t5", cardId: "k5", columnId: "c3", status: PENDING }),
 		},
+		comments: {},
 	};
 }
 
@@ -254,8 +267,253 @@ describe("state/restored", () => {
 			type: "state/restored",
 			payload: restored,
 		});
-
 		expect(result).toBe(restored);
+	});
+});
+
+/* -------------------------------------------------------------------------- */
+/* comments                                                                    */
+/* -------------------------------------------------------------------------- */
+
+describe("comment actions", () => {
+	it("creates top-level comments and nested replies with normalized parents", () => {
+		const state = seedState();
+		const topLevel = makeComment();
+		const afterTopLevel = reduce(state, {
+			type: "comment/created",
+			payload: topLevel,
+		});
+		const reply = makeComment({
+			id: "comment-2",
+			parentCommentId: topLevel.id,
+			body: "A reply",
+		});
+		const afterReply = reduce(afterTopLevel, {
+			type: "comment/created",
+			payload: reply,
+		});
+		const nestedReply = makeComment({
+			id: "comment-3",
+			parentCommentId: reply.id,
+			body: "A reply to a reply",
+		});
+		const result = reduce(afterReply, {
+			type: "comment/created",
+			payload: nestedReply,
+		});
+
+		expect(result.comments).toEqual({
+			[topLevel.id]: topLevel,
+			[reply.id]: reply,
+			[nestedReply.id]: nestedReply,
+		});
+		expect(state.comments).toEqual({});
+		expect(result.cards).toBe(state.cards);
+		expect(result.tags).toBe(state.tags);
+	});
+
+	it("trims and rejects blank comment bodies", () => {
+		const state = seedState();
+		const result = reduce(state, {
+			type: "comment/created",
+			payload: makeComment({ body: "  keep trimmed  " }),
+		});
+		expect(result.comments["comment-1"]?.body).toBe("keep trimmed");
+		expect(
+			reduce(state, {
+				type: "comment/created",
+				payload: makeComment({ body: "   " }),
+			}),
+		).toBe(state);
+	});
+
+	it("edits the body without changing comment identity, parent, or creation time", () => {
+		const state = seedState();
+		state.comments.parent = makeComment({ id: "parent" });
+		state.comments.child = makeComment({
+			id: "child",
+			parentCommentId: "parent",
+		});
+		const result = reduce(state, {
+			type: "comment/updated",
+			payload: { id: "child", body: "  Edited  ", updatedAt: NOW },
+		});
+		expect(result.comments.child).toEqual({
+			...state.comments.child,
+			body: "Edited",
+			updatedAt: NOW,
+		});
+		expect(state.comments.child?.body).toBe("A comment");
+	});
+
+	it("cascades deletion across reply branches without deleting unrelated comments", () => {
+		const state = seedState();
+		state.comments.root = makeComment({ id: "root" });
+		state.comments.replyA = makeComment({
+			id: "replyA",
+			parentCommentId: "root",
+		});
+		state.comments.nested = makeComment({
+			id: "nested",
+			parentCommentId: "replyA",
+		});
+		state.comments.replyB = makeComment({
+			id: "replyB",
+			parentCommentId: "root",
+		});
+		state.comments.unrelated = makeComment({
+			id: "unrelated",
+			cardId: "k2",
+		});
+
+		const result = reduce(state, {
+			type: "comment/deleted",
+			payload: { id: "root" },
+		});
+
+		expect(result.comments).toEqual({ unrelated: state.comments.unrelated });
+		expect(state.comments.root).toBeDefined();
+		expect(result.cards).toBe(state.cards);
+	});
+
+	it("removes comments when their card, column, or board is deleted", () => {
+		const state = seedState();
+		state.comments.first = makeComment({ id: "first", cardId: "k1" });
+		state.comments.second = makeComment({ id: "second", cardId: "k2" });
+		state.comments.otherColumn = makeComment({
+			id: "otherColumn",
+			cardId: "k4",
+		});
+		state.comments.otherBoard = makeComment({
+			id: "otherBoard",
+			cardId: "k5",
+		});
+
+		const afterCardDelete = reduce(state, {
+			type: "card/deleted",
+			payload: { id: "k1" },
+		});
+		expect(afterCardDelete.comments.first).toBeUndefined();
+		expect(afterCardDelete.comments.second).toBe(state.comments.second);
+
+		const afterColumnDelete = reduce(state, {
+			type: "column/deleted",
+			payload: { id: "c1" },
+		});
+		expect(afterColumnDelete.comments.first).toBeUndefined();
+		expect(afterColumnDelete.comments.second).toBeUndefined();
+		expect(afterColumnDelete.comments.otherColumn).toBe(
+			state.comments.otherColumn,
+		);
+
+		const afterBoardDelete = reduce(state, {
+			type: "board/deleted",
+			payload: { id: "b1" },
+		});
+		expect(afterBoardDelete.comments.first).toBeUndefined();
+		expect(afterBoardDelete.comments.second).toBeUndefined();
+		expect(afterBoardDelete.comments.otherColumn).toBeUndefined();
+		expect(afterBoardDelete.comments.otherBoard).toBe(
+			state.comments.otherBoard,
+		);
+	});
+
+	it.each([
+		{
+			name: "missing card",
+			comment: makeComment({ cardId: "missing" }),
+		},
+		{
+			name: "missing parent",
+			comment: makeComment({ parentCommentId: "missing" }),
+		},
+		{
+			name: "parent on another card",
+			comment: makeComment({ parentCommentId: "parent" }),
+			parentCardId: "k2",
+		},
+		{
+			name: "empty body",
+			comment: makeComment({ body: " " }),
+		},
+		{
+			name: "overlong body",
+			comment: makeComment({ body: "x".repeat(5001) }),
+		},
+		{
+			name: "invalid creation timestamp",
+			comment: makeComment({ createdAt: "not-a-timestamp" }),
+		},
+		{
+			name: "blank author",
+			comment: makeComment({ authorName: "  " }),
+		},
+	])("rejects an invalid comment relationship or body: $name", ({
+		comment,
+		parentCardId,
+	}) => {
+		const state = seedState();
+		if (parentCardId) {
+			state.comments.parent = makeComment({
+				id: "parent",
+				cardId: parentCardId,
+			});
+		}
+		expect(reduce(state, { type: "comment/created", payload: comment })).toBe(
+			state,
+		);
+	});
+
+	it("rejects cyclic existing parent chains and replies deeper than five levels", () => {
+		const state = seedState();
+		state.comments.cycleA = makeComment({
+			id: "cycleA",
+			parentCommentId: "cycleB",
+		});
+		state.comments.cycleB = makeComment({
+			id: "cycleB",
+			parentCommentId: "cycleA",
+		});
+		expect(
+			reduce(state, {
+				type: "comment/created",
+				payload: makeComment({
+					id: "cycle-child",
+					parentCommentId: "cycleA",
+				}),
+			}),
+		).toBe(state);
+
+		const deepState = seedState();
+		for (let depth = 0; depth <= 5; depth += 1) {
+			const id = `depth-${depth}`;
+			deepState.comments[id] = makeComment({
+				id,
+				parentCommentId: depth === 0 ? null : `depth-${depth - 1}`,
+			});
+		}
+		expect(
+			reduce(deepState, {
+				type: "comment/created",
+				payload: makeComment({
+					id: "depth-6",
+					parentCommentId: "depth-5",
+				}),
+			}),
+		).toBe(deepState);
+	});
+
+	it("rejects edits and deletes for missing targets", () => {
+		const state = seedState();
+		expect(
+			reduce(state, {
+				type: "comment/updated",
+				payload: { id: "missing", body: "Updated", updatedAt: NOW },
+			}),
+		).toBe(state);
+		expect(
+			reduce(state, { type: "comment/deleted", payload: { id: "missing" } }),
+		).toBe(state);
 	});
 });
 

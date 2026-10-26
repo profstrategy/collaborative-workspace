@@ -1,5 +1,56 @@
 import type { AppAction } from "./app.actions";
-import type { AppState, BoardCard, EntityId, Tag } from "./domain.types";
+import type {
+	AppState,
+	BoardCard,
+	CardComment,
+	EntityId,
+	Tag,
+} from "./domain.types";
+
+const MAX_COMMENT_DEPTH = 5;
+const MAX_COMMENT_BODY_LENGTH = 5000;
+
+function isValidTimestamp(value: string): boolean {
+	const timestamp = Date.parse(value);
+	return (
+		value.length > 0 &&
+		Number.isFinite(timestamp) &&
+		new Date(timestamp).toISOString() === value
+	);
+}
+
+function commentDepth(
+	comments: Record<EntityId, CardComment>,
+	parentCommentId: EntityId,
+	cardId: EntityId,
+): number | null {
+	let currentId: EntityId | null = parentCommentId;
+	let depth = 0;
+	const visited = new Set<EntityId>();
+
+	while (currentId !== null) {
+		if (visited.has(currentId)) return null;
+		visited.add(currentId);
+		const current: CardComment | undefined = comments[currentId];
+		if (!current || current.cardId !== cardId) return null;
+		if (current.parentCommentId === null) return depth;
+		depth += 1;
+		currentId = current.parentCommentId;
+	}
+
+	return null;
+}
+
+function removeCommentsForCards(
+	comments: Record<EntityId, CardComment>,
+	cardIds: ReadonlySet<EntityId>,
+): Record<EntityId, CardComment> {
+	const nextComments = { ...comments };
+	for (const [commentId, comment] of Object.entries(nextComments)) {
+		if (cardIds.has(comment.cardId)) delete nextComments[commentId];
+	}
+	return nextComments;
+}
 
 function reindexCards(
 	cards: Record<EntityId, BoardCard>,
@@ -267,6 +318,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 					tagIds.add(tagId);
 				}
 			}
+			const comments = removeCommentsForCards(state.comments, cardIds);
 
 			const boards = { ...state.boards };
 			const columns = { ...state.columns };
@@ -284,6 +336,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 				columns,
 				cards,
 				tags,
+				comments,
 			};
 		}
 
@@ -358,6 +411,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 					tagIds.add(tagId);
 				}
 			}
+			const comments = removeCommentsForCards(state.comments, cardIds);
 
 			const cards = { ...state.cards };
 			const tags = { ...state.tags };
@@ -386,6 +440,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 				columns: remainingColumns,
 				cards,
 				tags,
+				comments,
 			};
 		}
 
@@ -642,6 +697,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
 			const card = state.cards[cardId];
 			const column = state.columns[card.columnId];
+			const comments = removeCommentsForCards(
+				state.comments,
+				new Set([cardId]),
+			);
 
 			// Remove only the selected card object.
 			const { [cardId]: _deletedCard, ...remainingCards } = state.cards;
@@ -658,6 +717,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 					...state,
 					cards: remainingCards,
 					tags,
+					comments,
 				};
 			}
 
@@ -681,6 +741,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 				...state,
 				cards: updatedCards,
 				tags,
+				comments,
 				columns: {
 					...state.columns,
 					[column.id]: {
@@ -693,6 +754,102 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
 		case "card/moved":
 			return moveCard(state, action.payload);
+
+		case "comment/created": {
+			const comment = action.payload;
+			const body = comment.body.trim();
+			const authorName = comment.authorName.trim();
+			const card = state.cards[comment.cardId];
+
+			if (
+				!comment.id ||
+				state.comments[comment.id] ||
+				!card ||
+				!body ||
+				body.length > MAX_COMMENT_BODY_LENGTH ||
+				!authorName ||
+				authorName.length > 80 ||
+				!isValidTimestamp(comment.createdAt) ||
+				!isValidTimestamp(comment.updatedAt) ||
+				Date.parse(comment.updatedAt) < Date.parse(comment.createdAt)
+			) {
+				return state;
+			}
+
+			if (comment.parentCommentId !== null) {
+				const parentDepth = commentDepth(
+					state.comments,
+					comment.parentCommentId,
+					comment.cardId,
+				);
+				if (parentDepth === null || parentDepth + 1 > MAX_COMMENT_DEPTH) {
+					return state;
+				}
+			}
+
+			const nextComment: CardComment = {
+				...comment,
+				body,
+				authorName,
+			};
+			return {
+				...state,
+				comments: {
+					...state.comments,
+					[nextComment.id]: nextComment,
+				},
+			};
+		}
+
+		case "comment/updated": {
+			const { id, body: rawBody, updatedAt } = action.payload;
+			const comment = state.comments[id];
+			const body = rawBody.trim();
+			if (
+				!comment ||
+				!body ||
+				body.length > MAX_COMMENT_BODY_LENGTH ||
+				!isValidTimestamp(updatedAt) ||
+				Date.parse(updatedAt) < Date.parse(comment.createdAt)
+			) {
+				return state;
+			}
+
+			return {
+				...state,
+				comments: {
+					...state.comments,
+					[id]: { ...comment, body, updatedAt },
+				},
+			};
+		}
+
+		case "comment/deleted": {
+			const { id } = action.payload;
+			if (!state.comments[id]) return state;
+
+			const childrenByParent = new Map<EntityId, EntityId[]>();
+			for (const comment of Object.values(state.comments)) {
+				if (comment.parentCommentId === null) continue;
+				const siblings = childrenByParent.get(comment.parentCommentId) ?? [];
+				siblings.push(comment.id);
+				childrenByParent.set(comment.parentCommentId, siblings);
+			}
+
+			const deletedIds = new Set<EntityId>();
+			const pendingIds = [id];
+			while (pendingIds.length > 0) {
+				const currentId = pendingIds.pop();
+				if (!currentId || deletedIds.has(currentId)) continue;
+				deletedIds.add(currentId);
+				pendingIds.push(...(childrenByParent.get(currentId) ?? []));
+			}
+
+			const comments = { ...state.comments };
+			for (const commentId of deletedIds) delete comments[commentId];
+			return { ...state, comments };
+		}
+
 		default:
 			return state;
 	}

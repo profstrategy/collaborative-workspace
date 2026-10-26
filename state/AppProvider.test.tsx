@@ -88,6 +88,7 @@ describe("AppProvider persistence", () => {
 					columns: {},
 					cards: {},
 					tags: {},
+					comments: {},
 				},
 				revision: 1,
 			});

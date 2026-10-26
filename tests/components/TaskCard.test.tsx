@@ -59,6 +59,25 @@ describe("TaskCard movement", () => {
 		expect(onMoveCard).toHaveBeenCalledWith("task-1", "done", 0);
 	});
 
+	it("opens the selected card's comments with a meaningful count", () => {
+		const onShowComments = vi.fn();
+		render(
+			<TaskCard
+				card={firstCard}
+				tags={[]}
+				commentCount={3}
+				onShowComments={onShowComments}
+			/>,
+		);
+
+		fireEvent.click(
+			screen.getByRole("button", {
+				name: "Comments for First task: 3",
+			}),
+		);
+		expect(onShowComments).toHaveBeenCalledWith(firstCard);
+	});
+
 	it("restores focus to the moved card's column control", () => {
 		const onMoveCard = vi.fn();
 		const animationFrames: FrameRequestCallback[] = [];

@@ -108,7 +108,7 @@ export default function WorkspaceDashboard() {
 			<ConfirmDialog
 				open={Boolean(boardPendingDelete)}
 				title="Delete board?"
-				description={`Delete ${boardPendingDelete?.title ?? "this board"} and its columns, cards, and tags? This action cannot be undone.`}
+				description={`Delete ${boardPendingDelete?.title ?? "this board"} and its columns, cards, tags, and comments? This action cannot be undone.`}
 				onCancel={() => setBoardPendingDelete(undefined)}
 				onConfirm={() => {
 					if (boardPendingDelete) handleDeleteBoard(boardPendingDelete.id);

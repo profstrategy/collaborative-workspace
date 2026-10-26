@@ -3,6 +3,7 @@ import type {
 	Board,
 	BoardCard,
 	BoardColumn,
+	CardComment,
 	EntityId,
 	Tag,
 } from "./domain.types";
@@ -27,6 +28,10 @@ export const AppAction = {
 	CARD_TAGS_UPDATED: "card/tags-updated",
 	CARD_DELETED: "card/deleted",
 	CARD_MOVED: "card/moved",
+
+	COMMENT_CREATED: "comment/created",
+	COMMENT_UPDATED: "comment/updated",
+	COMMENT_DELETED: "comment/deleted",
 } as const;
 
 export type AppAction =
@@ -74,4 +79,10 @@ export type AppAction =
 				destinationIndex: number;
 				movedAt: string;
 			};
-	  };
+	  }
+	| { type: "comment/created"; payload: CardComment }
+	| {
+			type: "comment/updated";
+			payload: { id: EntityId; body: string; updatedAt: string };
+	  }
+	| { type: "comment/deleted"; payload: { id: EntityId } };

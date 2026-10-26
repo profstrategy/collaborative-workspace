@@ -41,6 +41,14 @@ export const cardFormSchema = z.object({
 		),
 });
 
+export const commentFormSchema = z.object({
+	body: z
+		.string()
+		.trim()
+		.min(1, "Enter a comment.")
+		.max(5000, "Comments must be 5,000 characters or fewer."),
+});
+
 export const tagSelectionSchema = z
 	.array(
 		z.enum(tagStatuses satisfies readonly [Tag["status"], ...Tag["status"][]]),
@@ -52,4 +60,5 @@ export const tagSelectionSchema = z
 
 export type ColumnFormValues = z.infer<typeof columnFormSchema>;
 export type CardFormValues = z.infer<typeof cardFormSchema>;
+export type CommentFormValues = z.infer<typeof commentFormSchema>;
 export type TagSelectionValues = z.infer<typeof tagSelectionSchema>;

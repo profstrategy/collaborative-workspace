@@ -63,10 +63,14 @@ export function AppProvider({
 	const latestStateRef = useRef(initialAppState);
 	const latestRequestRef = useRef(0);
 	const persistedRevisionRef = useRef(0);
+	const retryInProgressRef = useRef(false);
 	const apiRef = useRef(mockApi);
 
 	const persistState = useCallback(
 		async (nextState: AppState, mode: MockPersistenceStatus = "saving") => {
+			if (mode === "retrying" && retryInProgressRef.current) return;
+			if (mode === "retrying") retryInProgressRef.current = true;
+
 			const requestId = ++latestRequestRef.current;
 			latestStateRef.current = nextState;
 			setPersistence({
@@ -75,30 +79,36 @@ export function AppProvider({
 				canRetry: false,
 			});
 
-			const result = await apiRef.current.saveState(
-				nextState,
-				persistedRevisionRef.current,
-			);
+			try {
+				const result = await apiRef.current.saveState(
+					nextState,
+					persistedRevisionRef.current,
+				);
 
-			if (requestId !== latestRequestRef.current) {
-				return;
-			}
+				persistedRevisionRef.current = Math.max(
+					persistedRevisionRef.current,
+					result.revision,
+				);
 
-			if (!result.ok) {
+				if (requestId !== latestRequestRef.current) return;
+
+				if (!result.ok) {
+					setPersistence({
+						status: "unsaved",
+						message: result.error,
+						canRetry: true,
+					});
+					return;
+				}
+
 				setPersistence({
-					status: "unsaved",
-					message: result.error,
-					canRetry: true,
+					status: "saved",
+					message: "All changes saved.",
+					canRetry: false,
 				});
-				return;
+			} finally {
+				if (mode === "retrying") retryInProgressRef.current = false;
 			}
-
-			persistedRevisionRef.current = result.revision;
-			setPersistence({
-				status: "saved",
-				message: "All changes saved.",
-				canRetry: false,
-			});
 		},
 		[],
 	);

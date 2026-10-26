@@ -1,8 +1,8 @@
 # Talenvo Workspace
 
-Talenvo Workspace is a browser-based project planning application for organizing work into boards, columns, and cards. It provides a workspace dashboard, editable Kanban boards, card due dates, status tags, Markdown descriptions, and browser-local persistence.
+Talenvo Workspace is a browser-based project planning application for organizing work into boards, columns, cards, and threaded card comments. It provides a workspace dashboard, editable Kanban boards, card due dates, status tags, Markdown descriptions, and optimistic persistence through an in-memory mock API plus a browser-local storage cache.
 
-Application data is stored in the current browser profile. The repository does not implement accounts, shared workspaces, or synchronization between users or devices.
+The mock API is an in-memory backend simulation, not a durable or shared service. The application does not implement accounts or synchronization between users or devices.
 
 ## Features
 
@@ -12,12 +12,14 @@ Application data is stored in the current browser profile. The repository does n
 - Assign the supported tag statuses: Pending, Ongoing, Completed, and Bugs.
 - Set optional card due dates.
 - Reorder cards with native HTML drag-and-drop, including moving cards between columns. Keyboard-accessible per-card controls reorder cards within a column or move them to another column.
+- Add, reply to, edit, and delete normalized threaded comments on cards.
 - Write and preview Markdown descriptions with GitHub-Flavored Markdown support.
 - Validate board, column, card, date, and tag-selection form input with Zod.
-- Persist boards, columns, cards, and tags in `localStorage`; restore and validate state when the application starts.
+- Persist optimistic application snapshots through the in-memory mock API with explicit save status and retry behavior.
+- Cache and restore validated snapshots from `localStorage`.
 - Use responsive column scrolling, semantic controls, keyboard focus indicators, and accessible modal and form labels.
 
-Authentication, threaded comments, multi-user collaboration, remote synchronization, undo/redo, and server-backed persistence are not implemented. Card movement is local to the current browser profile.
+Authentication, real server-backed persistence, multi-user collaboration, remote synchronization, and undo/redo are not implemented. The demo author label is not an authenticated identity or authorization boundary.
 
 ## Technology Stack
 
@@ -30,7 +32,8 @@ Authentication, threaded comments, multi-user collaboration, remote synchronizat
 | React Context and `useReducer` | Central application state and typed state transitions |
 | Zod 4 | Form and tag-selection validation |
 | `react-markdown` and `remark-gfm` | Safe Markdown rendering and GFM extensions |
-| Browser `localStorage` | Persistence for the current browser origin/profile |
+| Browser `localStorage` | Validated browser-local snapshot cache/restore |
+| In-memory mock API | Asynchronous backend simulation for optimistic saves and retry |
 | Biome 2 | Linting and formatting |
 | Node.js built-in test runner | Storage-adapter tests |
 
@@ -91,7 +94,7 @@ npm exec -- tsc --noEmit --incremental false
 app/                          App Router pages, layouts, and route loading UI
 components/layout/             Shared navigation
 components/ui/                 Reusable buttons, fields, dialogs, and Markdown UI
-features/board/                Board, column, card, tag, validation, and feature hooks
+features/board/                Board, column, card, tag, comments, validation, and feature hooks
 features/workspace/            Workspace dashboard, board cards, and board forms
 services/storageAdapter.ts     Browser-safe persistence and stored-state validation
 services/storageAdapter.test.mjs Node tests for storage and persistence round-trips
@@ -105,17 +108,18 @@ Important files include `state/domain.types.ts` for persisted entity types, `sta
 
 ## Architecture
 
-Boards, columns, cards, and tags are stored in normalized records in `AppState`. Boards refer to columns by `columnIds`; columns refer to cards by `cardIds`; cards refer to tags by `tagIds`. Each column/card/tag also records its parent IDs.
+Boards, columns, cards, tags, and comments are stored in normalized records in `AppState`. Boards refer to columns by `columnIds`; columns refer to cards by `cardIds`; cards refer to tags by `tagIds`. Each column/card/tag/comment also records its parent IDs. A `CardComment` references a card and optionally another comment through `parentCommentId`; replies are not embedded in parent records.
 
-UI components call feature hooks. The hooks dispatch typed actions to the reducer, which returns the next `AppState`. `AppProvider` owns that state and persists state changes through the storage adapter. On board pages, `TaskCard` and `KanbanColumn` handle native drag-and-drop and invoke the `handleMoveCard` callback from `useBoard`; the reducer updates column membership and card positions. `column.cardIds` is the canonical card order, with `card.position` synchronized to each card's array index. Cards provide keyboard controls to move earlier/later or select another column.
+UI components call feature hooks or dispatch typed actions to the reducer, which returns the next `AppState`. `AppProvider` owns that state and coordinates optimistic saves to the mock API; the storage adapter separately caches/restores browser-local snapshots. On board pages, `TaskCard` and `KanbanColumn` handle native drag-and-drop and invoke the `handleMoveCard` callback from `useBoard`; the reducer updates column membership and card positions. `column.cardIds` is the canonical card order, with `card.position` synchronized to each card's array index. Cards provide keyboard controls to move earlier/later or select another column.
 
 ```mermaid
 flowchart LR
 	UI[Workspace and board UI] --> Hooks[Feature hooks]
 	Hooks -->|typed actions| Reducer[appReducer]
 	Reducer --> Provider[AppProvider state]
-	Provider -->|save after hydration| Storage[localStorage adapter]
-	Storage -->|validated load| Provider
+	Provider -->|optimistic async snapshot saves| API[In-memory mock API]
+	Provider -->|validated browser cache| Storage[localStorage adapter]
+	Storage -->|validated restore| Provider
 ```
 
 ### Core Data Model
@@ -126,29 +130,33 @@ flowchart LR
 | `BoardColumn` | `id`, `boardId`, `title`, `cardIds`, and optional `position`. |
 | `BoardCard` | `id`, `boardId`, `columnId`, `title`, `description`, `tagIds`, nullable `dueDate`, nullable `position`, and timestamps. |
 | `Tag` | `id`, `cardId`, `columnId`, `status`, and `color`. Status is `Pending`, `Ongoing`, `Completed`, or `Bugs`. |
+| `CardComment` | `id`, `cardId`, nullable `parentCommentId`, `body`, demo `authorName`, and creation/update timestamps. |
 
 The canonical definitions are maintained in [`state/domain.types.ts`](state/domain.types.ts).
 
+Comments are displayed in stable creation-time/ID order within each reply branch. Root comments have a null parent ID. Replies can nest up to five levels below the root; the reducer and storage adapter reject deeper, cyclic, orphaned, cross-card, or otherwise invalid relationships. Deleting a comment cascades to all its replies. Comment bodies are trimmed and limited to 5,000 characters. This frontend has no authenticated user identity: new comments use the explicit “Demo user” label, and the UI permits editing/deleting comments bearing that label. This is a demo affordance only; the mock frontend does not enforce authorization.
+
 ## Persistence and Data Handling
 
-The adapter in [`services/storageAdapter.ts`](services/storageAdapter.ts) stores the complete `AppState` as JSON under `talenvo:app-state` in `localStorage`. It is called only in client effects, not during server rendering. The provider delays rendering application children until the initial load finishes, then restores valid state through a reducer action.
+The adapter in [`services/storageAdapter.ts`](services/storageAdapter.ts) stores a complete `AppState` snapshot as JSON under `talenvo:app-state` in `localStorage`. It is called only in client effects, not during server rendering. The provider delays rendering application children until initialization finishes, restores a valid local snapshot when present (otherwise it uses the mock API snapshot), and then saves optimistic state changes asynchronously through the API. Storage remains a browser-local cache/restore mechanism; it is not the shared backend.
 
-Restored JSON is treated as untrusted input. The adapter validates collection shapes, entity fields, tag status values, and board/column/card/tag relationships before returning it. Malformed or incompatible data is logged and left untouched. When storage is unavailable, the application continues in memory; save and clear failures do not throw. Invalid stored data is not overwritten by the initial state, though a later state change can be saved.
+Restored JSON is treated as untrusted input. The adapter validates collection shapes, entity fields, tag status values, card ordering, and board/column/card/tag/comment relationships before returning it. It also validates comment parent chains, cycles, depth, body, author, and timestamps. A valid snapshot created before comments existed is migrated in memory to include an empty comments record; unrelated data is retained. Malformed or incompatible data is logged and left untouched. When storage is unavailable, the application continues in memory; storage failures do not throw. Invalid stored data is not overwritten by the initial state, though a later state change can be saved.
 
-Persistence is browser-local and origin-specific. Clearing browser data removes the saved state; there is no server backup or cross-device synchronization.
+The mock API in [`services/mockBoardApi.ts`](services/mockBoardApi.ts) has a typed async load/save contract, snapshot isolation, configurable latency/failure injection, and revision checks that reject stale writes. The provider keeps optimistic edits visible after a failure, reports an unsaved state, and offers explicit retry of the latest complete snapshot. API data exists only in memory and is lost when the owning runtime restarts; it is not durable production persistence or shared between users, devices, browser tabs, or independent processes. The localStorage cache has separate browser-origin/profile durability but is not synchronized back to the API automatically on reload.
 
 ## Validation and Tests
 
 Zod schemas in `features/workspace/validation.ts` and `features/board/validation.ts` validate form values before feature hooks dispatch mutations. `node:test` covers storage load/save, complete state round-tripping, dates and nullable values, invalid JSON/state, storage failures, hydration policy, and reducer-to-storage persistence.
 
-Vitest covers the reducer's board, column, card, tag, and card-movement operations, plus components including Button, ConfirmDialog, ErrorMessage, Input, KanbanColumn, MarkdownPreview, Modal, Sidebar, TaskCard, and Textarea. The separate Node storage tests cover load/save, state validation, storage failures, hydration policy, and reducer-to-storage round-trips. There are no integration workflow tests, browser automation tests, or dedicated performance benchmarks.
+Vitest covers reducer operations for boards, columns, cards, tags, card movement, and comments, as well as mock API persistence and components including CommentThread, Button, ConfirmDialog, ErrorMessage, Input, KanbanColumn, MarkdownPreview, Modal, Sidebar, TaskCard, and Textarea. The separate Node storage tests cover load/save, state and comment validation, legacy snapshot migration, storage failures, hydration policy, and reducer-to-storage round-trips. There are no browser automation tests or dedicated performance benchmarks.
 
 `npm run lint` invokes Biome using the checked-in `biome.json`, which enables Tailwind directive parsing. TypeScript strict mode is enabled in `tsconfig.json`; there is no dedicated type-check script, so run `npm exec -- tsc --noEmit --incremental false` directly.
 
 ## Current Limitations
 
-- Persistence is `localStorage` scoped to the current browser profile and origin. It is not a shared server data source and does not synchronize between users, devices, or browser profiles.
-- No API persistence, mock WebSocket transport, optimistic failure reconciliation, comments, undo/redo, or authentication is implemented.
+- Mock API persistence is in-memory and resets when its runtime restarts. `localStorage` is browser-origin/profile scoped; neither mechanism synchronizes between users or devices.
+- Comment author labels are demo-only and do not provide authenticated ownership or authorization.
+- No real API persistence, mock WebSocket transport, undo/redo, or authentication is implemented.
 - There is no error-boundary route, toast notification system, or shared Badge component.
 - Dark colors follow the operating-system color-scheme preference in the global stylesheet; a theme toggle and consistently themed component surfaces are not implemented.
 - Performance at large board sizes has not been benchmarked, and no virtualization is implemented.

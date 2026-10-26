@@ -68,6 +68,7 @@ function createState() {
 				color: "#78716C",
 			},
 		},
+		comments: {},
 	};
 }
 
@@ -206,6 +207,187 @@ test("load rejects inconsistent card ordering and leaves stored data untouched",
 		});
 		assert.equal(storage.getItem("talenvo:app-state"), serializedState, name);
 	}
+});
+
+test("restores normalized comments with valid parent relationships", () => {
+	const storage = createStorage();
+	setBrowserStorage(storage);
+	const state = createState();
+	state.comments = {
+		root: {
+			id: "root",
+			cardId: "card1",
+			parentCommentId: null,
+			body: "Top-level comment",
+			authorName: "Demo user",
+			createdAt: "2026-10-17T10:00:00.000Z",
+			updatedAt: "2026-10-17T10:00:00.000Z",
+		},
+		reply: {
+			id: "reply",
+			cardId: "card1",
+			parentCommentId: "root",
+			body: "Nested reply",
+			authorName: "Demo user",
+			createdAt: "2026-10-17T10:01:00.000Z",
+			updatedAt: "2026-10-17T10:01:00.000Z",
+		},
+	};
+
+	assert.equal(save(state), true);
+	const result = load();
+	assert.equal(result.status, "loaded");
+	if (result.status !== "loaded") return;
+	assert.deepEqual(result.state.comments, state.comments);
+});
+
+test("rejects malformed comments, invalid references, cycles, and excessive depth", () => {
+	const invalidStates = [
+		{
+			name: "comment record key mismatch",
+			mutate(state) {
+				state.comments.wrong = {
+					id: "comment",
+					cardId: "card1",
+					parentCommentId: null,
+					body: "Valid body",
+					authorName: "Demo user",
+					createdAt: "2026-10-17T10:00:00.000Z",
+					updatedAt: "2026-10-17T10:00:00.000Z",
+				};
+			},
+		},
+		{
+			name: "missing card",
+			mutate(state) {
+				state.comments.orphan = {
+					id: "orphan",
+					cardId: "missing-card",
+					parentCommentId: null,
+					body: "Orphan",
+					authorName: "Demo user",
+					createdAt: "2026-10-17T10:00:00.000Z",
+					updatedAt: "2026-10-17T10:00:00.000Z",
+				};
+			},
+		},
+		{
+			name: "invalid comment body and timestamp",
+			mutate(state) {
+				state.comments.invalid = {
+					id: "invalid",
+					cardId: "card1",
+					parentCommentId: null,
+					body: " ",
+					authorName: "Demo user",
+					createdAt: "invalid-date",
+					updatedAt: "invalid-date",
+				};
+			},
+		},
+		{
+			name: "missing parent",
+			mutate(state) {
+				state.comments.reply = {
+					id: "reply",
+					cardId: "card1",
+					parentCommentId: "missing",
+					body: "Reply",
+					authorName: "Demo user",
+					createdAt: "2026-10-17T10:00:00.000Z",
+					updatedAt: "2026-10-17T10:00:00.000Z",
+				};
+			},
+		},
+		{
+			name: "cross-card parent",
+			mutate(state) {
+				state.comments.root = {
+					id: "root",
+					cardId: "card1",
+					parentCommentId: null,
+					body: "Root",
+					authorName: "Demo user",
+					createdAt: "2026-10-17T10:00:00.000Z",
+					updatedAt: "2026-10-17T10:00:00.000Z",
+				};
+				state.comments.reply = {
+					id: "reply",
+					cardId: "card2",
+					parentCommentId: "root",
+					body: "Reply",
+					authorName: "Demo user",
+					createdAt: "2026-10-17T10:01:00.000Z",
+					updatedAt: "2026-10-17T10:01:00.000Z",
+				};
+			},
+		},
+		{
+			name: "cycle",
+			mutate(state) {
+				for (const [id, parentCommentId] of [
+					["first", "second"],
+					["second", "first"],
+				]) {
+					state.comments[id] = {
+						id,
+						cardId: "card1",
+						parentCommentId,
+						body: id,
+						authorName: "Demo user",
+						createdAt: "2026-10-17T10:00:00.000Z",
+						updatedAt: "2026-10-17T10:00:00.000Z",
+					};
+				}
+			},
+		},
+		{
+			name: "excessive depth",
+			mutate(state) {
+				for (let depth = 0; depth <= 6; depth += 1) {
+					const id = `depth-${depth}`;
+					state.comments[id] = {
+						id,
+						cardId: "card1",
+						parentCommentId: depth === 0 ? null : `depth-${depth - 1}`,
+						body: id,
+						authorName: "Demo user",
+						createdAt: "2026-10-17T10:00:00.000Z",
+						updatedAt: "2026-10-17T10:00:00.000Z",
+					};
+				}
+			},
+		},
+	];
+
+	for (const { name, mutate } of invalidStates) {
+		const state = createState();
+		state.comments = {};
+		mutate(state);
+		const serializedState = JSON.stringify(state);
+		setBrowserStorage(createStorage({ "talenvo:app-state": serializedState }));
+		silenceWarnings(() => {
+			assert.deepEqual(load(), { status: "invalid" }, name);
+		});
+	}
+});
+
+test("migrates older valid snapshots without a comments collection", () => {
+	const state = createState();
+	delete state.comments;
+	const storage = createStorage({
+		"talenvo:app-state": JSON.stringify(state),
+	});
+	setBrowserStorage(storage);
+
+	const result = load();
+	assert.equal(result.status, "loaded");
+	if (result.status !== "loaded") return;
+	assert.deepEqual(result.state.comments, {});
+	assert.deepEqual(result.state.boards, state.boards);
+	assert.deepEqual(result.state.columns, state.columns);
+	assert.deepEqual(result.state.cards, state.cards);
+	assert.deepEqual(result.state.tags, state.tags);
 });
 
 test("storage read, write, and clear failures do not throw", () => {
