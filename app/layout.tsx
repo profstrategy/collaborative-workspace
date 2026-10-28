@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
 import { AppProvider } from "@/state/AppProvider";
+import { CollaborationProvider } from "@/state/CollaborationProvider";
 
 const geistSans = Geist({
 	variable: "--font-geist-sans",
@@ -28,10 +29,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 		>
 			<body className="min-h-full flex flex-col">
 				<AppProvider>
-					<Suspense fallback={null}>
-						<Sidebar />
-					</Suspense>
-					{children}
+					<CollaborationProvider>
+						<Suspense fallback={null}>
+							<Sidebar />
+						</Suspense>
+						{children}
+					</CollaborationProvider>
 				</AppProvider>
 			</body>
 		</html>

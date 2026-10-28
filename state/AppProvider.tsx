@@ -10,6 +10,8 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { createRootState, rootReducer, type RootAction } from "./root.reducer";
+import type { HistoryEvent, HistoryState } from "./history.types";
 import {
 	createMockBoardApi,
 	type MockBoardApi,
@@ -38,6 +40,12 @@ interface AppContextValue {
 	isHydrated: boolean;
 	persistence: PersistenceStatusState;
 	retrySave: () => void;
+	undo: () => void;
+	redo: () => void;
+	canUndo: boolean;
+	canRedo: boolean;
+	history: HistoryState;
+	lastHistoryEvent: HistoryEvent | null;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -49,7 +57,8 @@ export function AppProvider({
 	children: ReactNode;
 	mockApi?: MockBoardApi;
 }) {
-	const [state, dispatch] = useReducer(appReducer, initialAppState);
+	const [root, dispatch] = useReducer(rootReducer, initialAppState, createRootState);
+	const state = root.domain; // every existing effect keeps working on this reference
 	const [isHydrated, setIsHydrated] = useState(false);
 	const [storageStatus, setStorageStatus] = useState<
 		StorageLoadResult["status"] | "pending"
@@ -65,6 +74,14 @@ export function AppProvider({
 	const persistedRevisionRef = useRef(0);
 	const retryInProgressRef = useRef(false);
 	const apiRef = useRef(mockApi);
+	const undo = useCallback(
+		() => dispatch({ type: "history/undo", payload: { at: new Date().toISOString() } }),
+		[],
+	);
+	const redo = useCallback(
+		() => dispatch({ type: "history/redo", payload: { at: new Date().toISOString() } }),
+		[],
+	);
 
 	const persistState = useCallback(
 		async (nextState: AppState, mode: MockPersistenceStatus = "saving") => {
@@ -178,7 +195,14 @@ export function AppProvider({
 
 	return (
 		<AppContext.Provider
-			value={{ state, dispatch, isHydrated, persistence, retrySave }}
+			value={{
+				state, dispatch, isHydrated, persistence, retrySave,
+				undo, redo,
+				canUndo: root.history.undoStack.length > 0,
+				canRedo: root.history.redoStack.length > 0,
+				history: root.history,
+				lastHistoryEvent: root.lastHistoryEvent,
+			}}
 		>
 			{isHydrated ? (
 				children

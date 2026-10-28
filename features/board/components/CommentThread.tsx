@@ -275,7 +275,7 @@ export default function CommentThread({
 							cancelLabel="Cancel edit"
 						/>
 					) : (
-						<p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-[#1E232A]">
+						<p className="mt-2 whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-[#1E232A]">
 							{comment.body}
 						</p>
 					)}

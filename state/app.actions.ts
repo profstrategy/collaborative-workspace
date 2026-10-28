@@ -7,6 +7,7 @@ import type {
 	EntityId,
 	Tag,
 } from "./domain.types";
+import type { CardSnapshot } from "./history.types";
 
 export const AppAction = {
 	STATE_RESTORED: "state/restored",
@@ -32,6 +33,7 @@ export const AppAction = {
 	COMMENT_CREATED: "comment/created",
 	COMMENT_UPDATED: "comment/updated",
 	COMMENT_DELETED: "comment/deleted",
+	CARD_RESTORED: "card/restored"
 } as const;
 
 export type AppAction =
@@ -85,4 +87,5 @@ export type AppAction =
 			type: "comment/updated";
 			payload: { id: EntityId; body: string; updatedAt: string };
 	  }
-	| { type: "comment/deleted"; payload: { id: EntityId } };
+	| { type: "comment/deleted"; payload: { id: EntityId } }
+	| { type: "card/restored"; payload: CardSnapshot };

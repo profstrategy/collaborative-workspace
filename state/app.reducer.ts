@@ -425,13 +425,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 			const parentBoard = state.boards[column.boardId];
 			const boards = parentBoard
 				? {
-						...state.boards,
-						[parentBoard.id]: {
-							...parentBoard,
-							columnIds: parentBoard.columnIds.filter((id) => id !== columnId),
-							updatedAt: new Date().toISOString(),
-						},
-					}
+					...state.boards,
+					[parentBoard.id]: {
+						...parentBoard,
+						columnIds: parentBoard.columnIds.filter((id) => id !== columnId),
+						updatedAt: new Date().toISOString(),
+					},
+				}
 				: state.boards;
 
 			return {
@@ -463,12 +463,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 			const parentBoard = state.boards[column.boardId];
 			const boards = parentBoard
 				? {
-						...state.boards,
-						[parentBoard.id]: {
-							...parentBoard,
-							updatedAt: new Date().toISOString(),
-						},
-					}
+					...state.boards,
+					[parentBoard.id]: {
+						...parentBoard,
+						updatedAt: new Date().toISOString(),
+					},
+				}
 				: state.boards;
 
 			return {
@@ -680,9 +680,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 				tags,
 				boards: board
 					? {
-							...state.boards,
-							[board.id]: { ...board, updatedAt },
-						}
+						...state.boards,
+						[board.id]: { ...board, updatedAt },
+					}
 					: state.boards,
 			};
 		}
@@ -754,6 +754,58 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
 		case "card/moved":
 			return moveCard(state, action.payload);
+
+		case "card/restored": {
+			const { card, columnId, index, tags, comments } = action.payload;
+			const column = state.columns[columnId];
+			const board = state.boards[card.boardId];
+
+			if (
+				!column ||
+				!board ||
+				column.boardId !== card.boardId ||
+				card.columnId !== columnId ||
+				state.cards[card.id] ||
+				!Number.isInteger(index) ||
+				index < 0
+			) {
+				return state;
+			}
+
+			const tagIds = new Set(tags.map((tag) => tag.id));
+			if (
+				tagIds.size !== tags.length ||
+				tagIds.size !== card.tagIds.length ||
+				card.tagIds.some((id) => !tagIds.has(id)) ||
+				tags.some(
+					(tag) =>
+						tag.cardId !== card.id ||
+						tag.columnId !== columnId ||
+						state.tags[tag.id],
+				) ||
+				comments.some(
+					(comment) => comment.cardId !== card.id || state.comments[comment.id],
+				)
+			) {
+				return state;
+			}
+
+			const cardIds = [...column.cardIds];
+			cardIds.splice(Math.min(index, cardIds.length), 0, card.id);
+
+			const nextTags = { ...state.tags };
+			for (const tag of tags) nextTags[tag.id] = tag;
+			const nextComments = { ...state.comments };
+			for (const comment of comments) nextComments[comment.id] = comment;
+
+			return {
+				...state,
+				cards: reindexCards({ ...state.cards, [card.id]: card }, cardIds, columnId),
+				columns: { ...state.columns, [columnId]: { ...column, cardIds } },
+				tags: nextTags,
+				comments: nextComments,
+			};
+		}
 
 		case "comment/created": {
 			const comment = action.payload;

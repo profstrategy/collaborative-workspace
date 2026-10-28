@@ -19,7 +19,7 @@ The mock API is an in-memory backend simulation, not a durable or shared service
 - Cache and restore validated snapshots from `localStorage`.
 - Use responsive column scrolling, semantic controls, keyboard focus indicators, and accessible modal and form labels.
 
-Authentication, real server-backed persistence, multi-user collaboration, remote synchronization, and undo/redo are not implemented. The demo author label is not an authenticated identity or authorization boundary.
+Authentication, real server-backed persistence, and domain-event synchronization are not implemented. Phase 5A adds a WebSocket transport foundation only; it does not synchronize board, card, or comment mutations. The demo author label is not an authenticated identity or authorization boundary.
 
 ## Technology Stack
 
@@ -33,7 +33,7 @@ Authentication, real server-backed persistence, multi-user collaboration, remote
 | Zod 4 | Form and tag-selection validation |
 | `react-markdown` and `remark-gfm` | Safe Markdown rendering and GFM extensions |
 | Browser `localStorage` | Validated browser-local snapshot cache/restore |
-| In-memory mock API | Asynchronous backend simulation for optimistic saves and retry |
+| In-memory mock API | Asynchronous backend simulation for optimistic saves and retry |\n| Native WebSocket + Vercel Functions | Versioned collaboration transport foundation (Phase 5A only) |
 | Biome 2 | Linting and formatting |
 | Node.js built-in test runner | Storage-adapter tests |
 
@@ -176,3 +176,24 @@ Set the production host's port and runtime configuration according to that host'
 ## Contributing and License
 
 Keep domain changes in the existing typed state/action/reducer flow, and validate persisted-state changes against `domain.types.ts`. Before submitting changes, run the relevant TypeScript, lint, build, and available test commands. No license file or contribution guide is present in this repository; licensing terms are therefore unspecified here.
+
+
+## Phase 5A: WebSocket transport foundation
+
+The collaboration transport uses the browser's native `WebSocket` API and a Next.js App Router endpoint at `/api/ws`, hosted in the same Vercel project. It does not use Socket.IO or a separate Node.js server. The `CollaborationProvider` owns connection lifecycle/status and room join/leave commands; it does not own or duplicate `AppState`.
+
+The protocol in `services/collaboration/protocol.ts` uses versioned message envelopes with a UUID message ID and timestamp. Initial client messages are `room/join`, `room/leave`, and `heartbeat/ping`. Server messages include `connection/ready`, room acknowledgements, `heartbeat/pong`, and structured errors. Payloads are size-limited and validated at runtime.
+
+### Configuration and local development
+
+The client derives `ws://<host>/api/ws` for HTTP and `wss://<host>/api/ws` for HTTPS by default. Optionally set `NEXT_PUBLIC_COLLABORATION_WS_URL` to an explicit WebSocket URL. This variable is public and must never contain credentials or secrets.
+
+Vercel's `experimental_upgradeWebSocket()` API is used by the route and is experimental. The Vercel documentation notes that this endpoint requires Vercel's runtime support; `next dev` alone does not provide the upgrade handler. Use a current Vercel CLI and test with `vercel dev`, then verify behavior in a deployed preview before relying on it.
+
+### Scope and limitations
+
+Phase 5A establishes the transport and room membership protocol. It does not broadcast or apply board, column, card, or comment mutations. Existing domain state, reducer, local storage cache, mock persistence API, and undo/redo remain the application's source of truth.
+
+The route's room registry is process-local and is only useful for connections handled by the same function instance. Vercel pins an established WebSocket to a function instance for the connection's lifetime, but subsequent connections may land on another instance. Consequently, this implementation does **not** guarantee cross-instance room delivery. Reliable multi-instance collaboration requires shared pub/sub (for example, Redis/Upstash) and a deliberate event/reconciliation design. Do not treat the local registry as a production distributed collaboration backend.
+
+Authentication, board-level authorization, domain-event broadcasting, deduplication of mutations, conflict resolution, authoritative revisions, and reconnect reconciliation are deferred to later phases. The app remains usable if the collaboration connection is unavailable.

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import MarkdownPreview from "@/components/ui/MarkdownPreview";
 import PersistenceStatus from "@/components/ui/PersistenceStatus";
 import { useAppProvider } from "@/state/AppProvider";
+import { useCollaboration } from "@/state/CollaborationProvider";
 import type { BoardCard, BoardColumn } from "@/state/domain.types";
 import { useBoard } from "../hooks/useBoard";
 import type { CardFormValues } from "../validation";
@@ -14,6 +15,7 @@ import CardModal from "./CardModal";
 import ColumnModal from "./ColumnModal";
 import CommentThread from "./CommentThread";
 import KanbanColumn from "./KanbanColumn";
+import UndoRedoControls from "./UndoRedoControls";
 
 type PendingDeletion =
 	| { kind: "card"; card: BoardCard }
@@ -30,7 +32,21 @@ export interface BoardPageClientProps {
 }
 
 export default function BoardPageClient({ boardId }: BoardPageClientProps) {
-	const { state, persistence, retrySave } = useAppProvider();
+	const { status: collaborationStatus, joinBoard, leaveBoard } = useCollaboration();
+	useEffect(() => {
+		joinBoard(boardId);
+		return () => leaveBoard(boardId);
+	}, [boardId, joinBoard, leaveBoard]);
+
+	const {
+		state,
+		persistence,
+		retrySave,
+		history,
+		lastHistoryEvent,
+		undo,
+		redo,
+	} = useAppProvider();
 	const {
 		handleCreateCard,
 		handleCreateColumn,
@@ -142,7 +158,15 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 							</div>
 						)}
 					</div>
-					<div className="flex items-center gap-3">
+					<div className="flex flex-wrap items-center gap-3">
+						<span className="text-xs text-[#6B7280]" role="status" aria-live="polite">Collaboration: {collaborationStatus}</span>
+						<UndoRedoControls
+							history={history}
+							lastHistoryEvent={lastHistoryEvent}
+							onUndo={undo}
+							onRedo={redo}
+						/>
+						
 						<PersistenceStatus persistence={persistence} onRetry={retrySave} />
 						<Button
 							variant="white"
