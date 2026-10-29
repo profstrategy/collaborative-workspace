@@ -33,7 +33,7 @@ export const AppAction = {
 	COMMENT_CREATED: "comment/created",
 	COMMENT_UPDATED: "comment/updated",
 	COMMENT_DELETED: "comment/deleted",
-	CARD_RESTORED: "card/restored"
+	CARD_RESTORED: "card/restored",
 } as const;
 
 export type AppAction =

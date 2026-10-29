@@ -425,13 +425,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 			const parentBoard = state.boards[column.boardId];
 			const boards = parentBoard
 				? {
-					...state.boards,
-					[parentBoard.id]: {
-						...parentBoard,
-						columnIds: parentBoard.columnIds.filter((id) => id !== columnId),
-						updatedAt: new Date().toISOString(),
-					},
-				}
+						...state.boards,
+						[parentBoard.id]: {
+							...parentBoard,
+							columnIds: parentBoard.columnIds.filter((id) => id !== columnId),
+							updatedAt: new Date().toISOString(),
+						},
+					}
 				: state.boards;
 
 			return {
@@ -463,12 +463,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 			const parentBoard = state.boards[column.boardId];
 			const boards = parentBoard
 				? {
-					...state.boards,
-					[parentBoard.id]: {
-						...parentBoard,
-						updatedAt: new Date().toISOString(),
-					},
-				}
+						...state.boards,
+						[parentBoard.id]: {
+							...parentBoard,
+							updatedAt: new Date().toISOString(),
+						},
+					}
 				: state.boards;
 
 			return {
@@ -680,9 +680,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 				tags,
 				boards: board
 					? {
-						...state.boards,
-						[board.id]: { ...board, updatedAt },
-					}
+							...state.boards,
+							[board.id]: { ...board, updatedAt },
+						}
 					: state.boards,
 			};
 		}
@@ -800,7 +800,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
 			return {
 				...state,
-				cards: reindexCards({ ...state.cards, [card.id]: card }, cardIds, columnId),
+				cards: reindexCards(
+					{ ...state.cards, [card.id]: card },
+					cardIds,
+					columnId,
+				),
 				columns: { ...state.columns, [columnId]: { ...column, cardIds } },
 				tags: nextTags,
 				comments: nextComments,

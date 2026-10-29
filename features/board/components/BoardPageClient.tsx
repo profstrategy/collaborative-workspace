@@ -32,7 +32,12 @@ export interface BoardPageClientProps {
 }
 
 export default function BoardPageClient({ boardId }: BoardPageClientProps) {
-	const { status: collaborationStatus, joinBoard, leaveBoard } = useCollaboration();
+	const {
+		status: collaborationStatus,
+		peerCount,
+		joinBoard,
+		leaveBoard,
+	} = useCollaboration();
 	useEffect(() => {
 		joinBoard(boardId);
 		return () => leaveBoard(boardId);
@@ -159,14 +164,20 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 						)}
 					</div>
 					<div className="flex flex-wrap items-center gap-3">
-						<span className="text-xs text-[#6B7280]" role="status" aria-live="polite">Collaboration: {collaborationStatus}</span>
+						<output className="text-xs text-[#6B7280]" aria-live="polite">
+							Collaboration:{" "}
+							{collaborationStatus === "connected"
+								? "simulated"
+								: collaborationStatus}{" "}
+							· {peerCount} other {peerCount === 1 ? "client" : "clients"}
+						</output>
 						<UndoRedoControls
 							history={history}
 							lastHistoryEvent={lastHistoryEvent}
 							onUndo={undo}
 							onRedo={redo}
 						/>
-						
+
 						<PersistenceStatus persistence={persistence} onRetry={retrySave} />
 						<Button
 							variant="white"

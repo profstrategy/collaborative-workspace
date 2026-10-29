@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
+import { ToastProvider } from "@/components/ui/ToastProvider";
 import { AppProvider } from "@/state/AppProvider";
 import { CollaborationProvider } from "@/state/CollaborationProvider";
 
@@ -28,14 +29,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 			className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
 		>
 			<body className="min-h-full flex flex-col">
-				<AppProvider>
-					<CollaborationProvider>
-						<Suspense fallback={null}>
-							<Sidebar />
-						</Suspense>
-						{children}
-					</CollaborationProvider>
-				</AppProvider>
+				<ToastProvider>
+					<AppProvider>
+						<CollaborationProvider>
+							<Suspense fallback={null}>
+								<Sidebar />
+							</Suspense>
+							{children}
+						</CollaborationProvider>
+					</AppProvider>
+				</ToastProvider>
 			</body>
 		</html>
 	);

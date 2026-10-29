@@ -30,7 +30,8 @@ function runHistory(
 	direction: "undo" | "redo",
 	at: string,
 ): AppRootState {
-	const stack = direction === "undo" ? root.history.undoStack : root.history.redoStack;
+	const stack =
+		direction === "undo" ? root.history.undoStack : root.history.redoStack;
 	const seq = (root.lastHistoryEvent?.seq ?? 0) + 1; // derived, so the reducer stays pure
 	const entry = stack[stack.length - 1];
 
@@ -50,27 +51,44 @@ function runHistory(
 					? { ...root.history, undoStack: remaining }
 					: { ...root.history, redoStack: remaining },
 			lastHistoryEvent: {
-				seq, direction, outcome: "failed", entryKind: entry.kind, reason: result.reason,
+				seq,
+				direction,
+				outcome: "failed",
+				entryKind: entry.kind,
+				reason: result.reason,
 			},
 		};
 	}
 
 	const history: HistoryState =
 		direction === "undo"
-			? { undoStack: remaining, redoStack: [...root.history.redoStack, result.counterpart] }
+			? {
+					undoStack: remaining,
+					redoStack: [...root.history.redoStack, result.counterpart],
+				}
 			: {
-					undoStack: [...root.history.undoStack, result.counterpart].slice(-HISTORY_LIMIT),
+					undoStack: [...root.history.undoStack, result.counterpart].slice(
+						-HISTORY_LIMIT,
+					),
 					redoStack: remaining,
 				};
 
 	return {
 		domain: result.state,
 		history,
-		lastHistoryEvent: { seq, direction, outcome: "applied", entryKind: entry.kind },
+		lastHistoryEvent: {
+			seq,
+			direction,
+			outcome: "applied",
+			entryKind: entry.kind,
+		},
 	};
 }
 
-export function rootReducer(root: AppRootState, action: RootAction): AppRootState {
+export function rootReducer(
+	root: AppRootState,
+	action: RootAction,
+): AppRootState {
 	switch (action.type) {
 		case "history/undo":
 			return runHistory(root, "undo", action.payload.at);

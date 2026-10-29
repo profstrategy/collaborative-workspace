@@ -1,5 +1,5 @@
-import { appReducer } from "./app.reducer";
 import type { AppAction } from "./app.actions";
+import { appReducer } from "./app.reducer";
 import type { AppState, EntityId } from "./domain.types";
 import type {
 	CardSnapshot,
@@ -15,7 +15,10 @@ export type ApplyResult =
 	| { ok: true; state: AppState; counterpart: HistoryEntry }
 	| { ok: false; reason: HistoryFailureReason };
 
-const fail = (reason: HistoryFailureReason): ApplyResult => ({ ok: false, reason });
+const fail = (reason: HistoryFailureReason): ApplyResult => ({
+	ok: false,
+	reason,
+});
 
 export function captureCardSnapshot(
 	state: AppState,
@@ -80,7 +83,10 @@ export function deriveHistoryEntry(
 	}
 }
 
-export function recordEntry(history: HistoryState, entry: HistoryEntry): HistoryState {
+export function recordEntry(
+	history: HistoryState,
+	entry: HistoryEntry,
+): HistoryState {
 	return {
 		undoStack: [...history.undoStack, entry].slice(-HISTORY_LIMIT),
 		redoStack: [], // a new supported operation invalidates redo
@@ -103,7 +109,11 @@ function removeCard(
 	const next = appReducer(state, { type: "card/deleted", payload: { id } });
 	if (next === state) return fail("restore-rejected");
 	// Counterpart is captured from CURRENT data so the opposite step restores exactly this.
-	return { ok: true, state: next, counterpart: { kind: entry.kind, snapshot: current } };
+	return {
+		ok: true,
+		state: next,
+		counterpart: { kind: entry.kind, snapshot: current },
+	};
 }
 
 function restoreCard(
@@ -118,7 +128,11 @@ function restoreCard(
 		return fail("restore-rejected");
 	}
 	const restored = captureCardSnapshot(next, snapshot.card.id) ?? snapshot;
-	return { ok: true, state: next, counterpart: { kind: entry.kind, snapshot: restored } };
+	return {
+		ok: true,
+		state: next,
+		counterpart: { kind: entry.kind, snapshot: restored },
+	};
 }
 
 function applyMove(
@@ -128,7 +142,9 @@ function applyMove(
 	at: string,
 ): ApplyResult {
 	const forward = direction === "redo";
-	const fromColumnId = forward ? entry.sourceColumnId : entry.destinationColumnId;
+	const fromColumnId = forward
+		? entry.sourceColumnId
+		: entry.destinationColumnId;
 	const toColumnId = forward ? entry.destinationColumnId : entry.sourceColumnId;
 	const fromIndex = forward ? entry.fromIndex : entry.toIndex;
 	const toIndex = forward ? entry.toIndex : entry.fromIndex;
@@ -139,7 +155,10 @@ function applyMove(
 	if (!fromColumn || !state.columns[toColumnId]) return fail("column-missing");
 
 	// The card must be exactly where this entry expects it, otherwise state drifted.
-	if (card.columnId !== fromColumnId || fromColumn.cardIds[fromIndex] !== entry.cardId) {
+	if (
+		card.columnId !== fromColumnId ||
+		fromColumn.cardIds[fromIndex] !== entry.cardId
+	) {
 		return fail("location-mismatch");
 	}
 
@@ -165,9 +184,13 @@ export function applyHistoryEntry(
 ): ApplyResult {
 	switch (entry.kind) {
 		case "card-created":
-			return direction === "undo" ? removeCard(state, entry) : restoreCard(state, entry);
+			return direction === "undo"
+				? removeCard(state, entry)
+				: restoreCard(state, entry);
 		case "card-deleted":
-			return direction === "undo" ? restoreCard(state, entry) : removeCard(state, entry);
+			return direction === "undo"
+				? restoreCard(state, entry)
+				: removeCard(state, entry);
 		case "card-moved":
 			return applyMove(state, entry, direction, at);
 	}

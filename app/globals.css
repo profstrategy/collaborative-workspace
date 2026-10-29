@@ -25,3 +25,126 @@ body {
 	color: var(--foreground);
 	font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Talenvo's own toast system: no component library or notification template. */
+.talenvo-toast-viewport {
+	position: fixed;
+	z-index: 1000;
+	top: 1rem;
+	right: 1rem;
+	display: flex;
+	width: min(24rem, calc(100vw - 2rem));
+	flex-direction: column;
+	gap: 0.75rem;
+	pointer-events: none;
+}
+
+.talenvo-toast {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.75rem;
+	padding: 0.875rem 0.875rem 0.875rem 1rem;
+	border: 1px solid #dce2e8;
+	border-radius: 0.875rem;
+	background: #fff;
+	color: #1e232a;
+	box-shadow: 0 12px 32px rgb(15 23 42 / 13%);
+	pointer-events: auto;
+	animation: talenvo-toast-enter 180ms ease-out both;
+}
+
+.talenvo-toast--success {
+	border-left: 4px solid #16845b;
+}
+.talenvo-toast--error {
+	border-left: 4px solid #c73737;
+}
+.talenvo-toast--warning {
+	border-left: 4px solid #b7791f;
+}
+.talenvo-toast--info {
+	border-left: 4px solid #2563eb;
+}
+
+.talenvo-toast__icon {
+	display: grid;
+	width: 1.5rem;
+	height: 1.5rem;
+	flex: 0 0 1.5rem;
+	place-items: center;
+	border-radius: 999px;
+	background: #eef2f6;
+	font-size: 0.875rem;
+	font-weight: 700;
+}
+
+.talenvo-toast--success .talenvo-toast__icon {
+	background: #e6f6ee;
+	color: #126b49;
+}
+.talenvo-toast--error .talenvo-toast__icon {
+	background: #fff0f0;
+	color: #a82020;
+}
+.talenvo-toast--warning .talenvo-toast__icon {
+	background: #fff7e6;
+	color: #8b5a12;
+}
+.talenvo-toast--info .talenvo-toast__icon {
+	background: #edf4ff;
+	color: #1d4ed8;
+}
+
+.talenvo-toast__content {
+	min-width: 0;
+	flex: 1;
+}
+.talenvo-toast__title {
+	margin: 0;
+	font-size: 0.875rem;
+	font-weight: 650;
+	line-height: 1.35;
+}
+.talenvo-toast__description {
+	margin: 0.25rem 0 0;
+	color: #5d6673;
+	font-size: 0.8125rem;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+.talenvo-toast__close {
+	display: grid;
+	width: 1.75rem;
+	height: 1.75rem;
+	flex: 0 0 1.75rem;
+	place-items: center;
+	border-radius: 0.375rem;
+	color: #697386;
+	font-size: 1.25rem;
+	line-height: 1;
+}
+.talenvo-toast__close:hover {
+	background: #f1f4f7;
+	color: #1e232a;
+}
+.talenvo-toast__close:focus-visible {
+	outline: 2px solid #2563eb;
+	outline-offset: 2px;
+}
+
+@keyframes talenvo-toast-enter {
+	from {
+		opacity: 0;
+		transform: translateY(-0.35rem);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.talenvo-toast {
+		animation: none;
+	}
+}

@@ -2,10 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Button from "@/components/ui/Button";
-import type {
-	HistoryEvent,
-	HistoryState,
-} from "@/state/history.types";
+import type { HistoryEvent, HistoryState } from "@/state/history.types";
 
 interface UndoRedoControlsProps {
 	history: HistoryState;
@@ -108,12 +105,7 @@ export default function UndoRedoControls({
 				</Button>
 			</div>
 
-			<span
-				role="status"
-				aria-live="polite"
-				aria-atomic="true"
-				className="sr-only"
-			>
+			<span aria-live="polite" aria-atomic="true" className="sr-only">
 				{message}
 			</span>
 		</div>
