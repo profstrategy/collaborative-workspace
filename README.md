@@ -157,21 +157,6 @@ Vitest covers reducer operations for boards, columns, cards, tags, card movement
 - Mock API persistence is in-memory and resets when its runtime restarts. `localStorage` is browser-origin/profile scoped; neither mechanism synchronizes between users or devices.
 - Comment author labels are demo-only and do not provide authenticated ownership or authorization.
 - No real API persistence, mock WebSocket transport, undo/redo, or authentication is implemented.
-- There is no error-boundary route, toast notification system, or shared Badge component.
-- Dark colors follow the operating-system color-scheme preference in the global stylesheet; a theme toggle and consistently themed component surfaces are not implemented.
-- Performance at large board sizes has not been benchmarked, and no virtualization is implemented.
-
-## Deployment
-
-No platform-specific deployment configuration is checked in. For a Node.js host, build and start the application with:
-
-```bash
-npm ci
-npm run build
-npm run start
-```
-
-Set the production host's port and runtime configuration according to that host's Next.js deployment requirements. No application environment variables are currently required.
 
 ## Contributing and License
 
@@ -180,7 +165,7 @@ Keep domain changes in the existing typed state/action/reducer flow, and validat
 
 ## WebSocket transport foundation
 
-The collaboration transport uses the browser's native `WebSocket` API and a Next.js App Router endpoint at `/api/ws`, hosted in the same Vercel project. It does not use Socket.IO or a separate Node.js server. The `CollaborationProvider` originally owned WebSocket lifecycle/status and room join/leave commands. In Phase 5B, the UI provider uses the simulated `BroadcastChannel` layer for local multi-tab presence; it does not own or duplicate `AppState`.
+The collaboration transport uses the browser's native `WebSocket` API and a Next.js App Router endpoint at `/api/ws`, hosted in the same Vercel project. It does not use Socket.IO or a separate Node.js server. The `CollaborationProvider` originally owned WebSocket lifecycle/status and room join/leave commands.  the UI provider uses the simulated `BroadcastChannel` layer for local multi-tab presence; it does not own or duplicate `AppState`.
 
 The protocol in `services/collaboration/protocol.ts` uses versioned message envelopes with a UUID message ID and timestamp. Initial client messages are `room/join`, `room/leave`, and `heartbeat/ping`. Server messages include `connection/ready`, room acknowledgements, `heartbeat/pong`, and structured errors. Payloads are size-limited and validated at runtime.
 
@@ -202,6 +187,6 @@ Authentication, board-level authorization, domain-event broadcasting, deduplicat
 
 This Phase adds a same-origin, same-browser simulation using the native `BroadcastChannel` API. Open the app in two tabs in the same browser profile, navigate to the same board, and make a board/card/comment change in one tab. `AppProvider` broadcasts a validated full-state snapshot after a local domain-state change; the other tab validates and applies that snapshot through the existing `state/restored` reducer action. Remote snapshots are persisted by that tab but are not re-broadcast, preventing a snapshot echo loop. Board presence is broadcast separately and the board header reports the number of other clients observed in the same board room.
 
-The existing `createMockBoardApi` remains in place for per-tab asynchronous persistence, revision checks, latency, and failure injection. This is intentionally a demonstration layer, not a production collaboration backend. `BroadcastChannel` only reaches same-origin contexts in the same browser profile, messages are ephemeral, presence can become stale after an abrupt tab crash, and snapshots use a simple last-arriving-snapshot approach. Simultaneous edits can overwrite one another; there is no durable event log, server authority, authentication, authorization, operation-level merge, or cross-device/cross-process delivery. The WebSocket route was implemented remains but is not required by the simulated collaboration UI currently in use.
+The existing `createMockBoardApi` remains in place for per-tab asynchronous persistence, revision checks, latency, and failure injection. This is intentionally a demonstration layer, not a production collaboration backend. `BroadcastChannel` only reaches same-origin contexts in the same browser profile, messages are ephemeral, presence can become stale after an abrupt tab crash, and snapshots use a simple last-arriving-snapshot approach. Simultaneous edits can overwrite one another; there is no durable event log, server authority, authentication, authorization, operation-level merge, or cross-device/cross-process delivery. The WebSocket route was implemented but is not required by the simulated collaboration UI currently in use.
 
 To exercise the simulation, run `npm run dev` and open the same origin in two tabs. Use a modern browser that supports `BroadcastChannel`. For each tab, the app continues to use its existing local storage cache and mock API instance. Automated tests for the simulation are in `services/collaboration/simulatedCollaboration.test.ts`.
