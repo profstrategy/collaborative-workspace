@@ -1,8 +1,8 @@
 # Talenvo Workspace
 
-Talenvo Workspace is a browser-based project planning application for organizing work into boards, columns, and cards. It provides a workspace dashboard, editable Kanban boards, card due dates, status tags, Markdown descriptions, and browser-local persistence.
+Talenvo Workspace is a browser-based project planning application for organizing work into boards, columns, cards, and threaded card comments. It provides a workspace dashboard, editable Kanban boards, card due dates, status tags, Markdown descriptions, and optimistic persistence through an in-memory mock API plus a browser-local storage cache.
 
-Application data is stored in the current browser profile. The repository does not implement accounts, shared workspaces, or synchronization between users or devices.
+The mock API is an in-memory backend simulation, not a durable or shared service. The application does not implement accounts or synchronization between users or devices.
 
 ## Features
 
@@ -11,12 +11,15 @@ Application data is stored in the current browser profile. The repository does n
 - Create, edit, and delete columns and cards; column and card deletion also removes related entities.
 - Assign the supported tag statuses: Pending, Ongoing, Completed, and Bugs.
 - Set optional card due dates.
+- Reorder cards with native HTML drag-and-drop, including moving cards between columns. Keyboard-accessible per-card controls reorder cards within a column or move them to another column.
+- Add, reply to, edit, and delete normalized threaded comments on cards.
 - Write and preview Markdown descriptions with GitHub-Flavored Markdown support.
 - Validate board, column, card, date, and tag-selection form input with Zod.
-- Persist boards, columns, cards, and tags in `localStorage`; restore and validate state when the application starts.
+- Persist optimistic application snapshots through the in-memory mock API with explicit save status and retry behavior.
+- Cache and restore validated snapshots from `localStorage`.
 - Use responsive column scrolling, semantic controls, keyboard focus indicators, and accessible modal and form labels.
 
-Drag-and-drop, authentication, multi-user collaboration, and remote synchronization are not implemented.
+Authentication, real server-backed persistence, and domain-event synchronization are not implemented. This Phase adds a WebSocket transport foundation only; it does not synchronize board, card, or comment mutations. The demo author label is not an authenticated identity or authorization boundary.
 
 ## Technology Stack
 
@@ -29,7 +32,8 @@ Drag-and-drop, authentication, multi-user collaboration, and remote synchronizat
 | React Context and `useReducer` | Central application state and typed state transitions |
 | Zod 4 | Form and tag-selection validation |
 | `react-markdown` and `remark-gfm` | Safe Markdown rendering and GFM extensions |
-| Browser `localStorage` | Persistence for the current browser origin/profile |
+| Browser `localStorage` | Validated browser-local snapshot cache/restore |
+| In-memory mock API | Asynchronous backend simulation for optimistic saves and retry |\n| Native WebSocket + Vercel Functions | Versioned collaboration transport foundation (Phase 5A only) |
 | Biome 2 | Linting and formatting |
 | Node.js built-in test runner | Storage-adapter tests |
 
@@ -58,7 +62,7 @@ No environment variables are referenced by the current application code. There i
 | `/` | Redirects to `/workspace`. |
 | `/workspace` | Displays boards and board create/edit/delete actions. |
 | `/board/[boardId]` | Displays the selected board and its columns/cards. |
-| `/board` | Displays an empty-state message directing users to the workspace. It is not a board index. |
+| `/board` | Displays an empty-state message directing users to the workspace; it is not a board index. |
 
 ## Available Scripts
 
@@ -69,47 +73,53 @@ No environment variables are referenced by the current application code. There i
 | `npm run start` | Serve a previously built application. |
 | `npm run lint` | Run `biome check` on the repository. |
 | `npm run format` | Run `biome format --write` on the repository. |
+| `npm run test` | Start Vitest in watch mode. |
+| `npm run test:run` | Run the Vitest suite once. |
 
-There is no `test` script. The current storage-adapter test can be run directly with Node 24's TypeScript type stripping:
+The storage-adapter tests use Node's built-in test runner and can be run separately with Node 24's TypeScript type stripping:
 
 ```bash
-node --experimental-strip-types --test tests/services/storageAdapter.test.mjs
+node --experimental-strip-types --test services/storageAdapter.test.mjs
 ```
 
-TypeScript can be checked separately with:
+TypeScript can be checked separately (without writing incremental build metadata) with:
 
 ```bash
-npm exec -- tsc --noEmit
+npm exec -- tsc --noEmit --incremental false
 ```
 
 ## Project Structure
 
 ```text
-app/                         App Router pages, layouts, and loading UI
-components/layout/            Shared navigation; shell/header placeholders
-components/ui/                Reusable buttons, fields, dialogs, and Markdown UI
-features/board/               Board, column, card, tag, validation, and feature hooks
-features/workspace/           Workspace dashboard, board cards, and board forms
-services/storageAdapter.ts    Browser-safe persistence and stored-state validation
-state/                        Domain types, provider, reducer, actions, initial state
-tests/                         Adapter test; component, reducer, and integration test placeholders
+app/                          App Router pages, layouts, and route loading UI
+components/layout/             Shared navigation
+components/ui/                 Reusable buttons, fields, dialogs, and Markdown UI
+features/board/                Board, column, card, tag, comments, validation, and feature hooks
+features/workspace/            Workspace dashboard, board cards, and board forms
+services/storageAdapter.ts     Browser-safe persistence and stored-state validation
+services/storageAdapter.test.mjs Node tests for storage and persistence round-trips
+state/                         Domain types, provider, reducer, actions, initial state, reducer tests
+tests/components/              Vitest component tests
+vite.config.mts                Vitest configuration and @/ path alias
+vitest.setup.ts                Testing Library setup
 ```
 
 Important files include `state/domain.types.ts` for persisted entity types, `state/app.actions.ts` and `state/app.reducer.ts` for typed state transitions, and `state/AppProvider.tsx` for application state and persistence integration.
 
 ## Architecture
 
-Boards, columns, cards, and tags are stored in normalized records in `AppState`. Boards refer to columns by `columnIds`; columns refer to cards by `cardIds`; cards refer to tags by `tagIds`. Each column/card/tag also records its parent IDs.
+Boards, columns, cards, tags, and comments are stored in normalized records in `AppState`. Boards refer to columns by `columnIds`; columns refer to cards by `cardIds`; cards refer to tags by `tagIds`. Each column/card/tag/comment also records its parent IDs. A `CardComment` references a card and optionally another comment through `parentCommentId`; replies are not embedded in parent records.
 
-UI components call feature hooks. The hooks dispatch typed actions to the reducer, which returns the next `AppState`. `AppProvider` owns that state and persists successful state changes through the storage adapter.
+UI components call feature hooks or dispatch typed actions to the reducer, which returns the next `AppState`. `AppProvider` owns that state and coordinates optimistic saves to the mock API; the storage adapter separately caches/restores browser-local snapshots. On board pages, `TaskCard` and `KanbanColumn` handle native drag-and-drop and invoke the `handleMoveCard` callback from `useBoard`; the reducer updates column membership and card positions. `column.cardIds` is the canonical card order, with `card.position` synchronized to each card's array index. Cards provide keyboard controls to move earlier/later or select another column.
 
 ```mermaid
 flowchart LR
 	UI[Workspace and board UI] --> Hooks[Feature hooks]
 	Hooks -->|typed actions| Reducer[appReducer]
 	Reducer --> Provider[AppProvider state]
-	Provider -->|save after hydration| Storage[localStorage adapter]
-	Storage -->|validated load| Provider
+	Provider -->|optimistic async snapshot saves| API[In-memory mock API]
+	Provider -->|validated browser cache| Storage[localStorage adapter]
+	Storage -->|validated restore| Provider
 ```
 
 ### Core Data Model
@@ -120,24 +130,36 @@ flowchart LR
 | `BoardColumn` | `id`, `boardId`, `title`, `cardIds`, and optional `position`. |
 | `BoardCard` | `id`, `boardId`, `columnId`, `title`, `description`, `tagIds`, nullable `dueDate`, nullable `position`, and timestamps. |
 | `Tag` | `id`, `cardId`, `columnId`, `status`, and `color`. Status is `Pending`, `Ongoing`, `Completed`, or `Bugs`. |
+| `CardComment` | `id`, `cardId`, nullable `parentCommentId`, `body`, demo `authorName`, and creation/update timestamps. |
 
 The canonical definitions are maintained in [`state/domain.types.ts`](state/domain.types.ts).
 
+Comments are displayed in stable creation-time/ID order within each reply branch. Root comments have a null parent ID. Replies can nest up to five levels below the root; the reducer and storage adapter reject deeper, cyclic, orphaned, cross-card, or otherwise invalid relationships. Deleting a comment cascades to all its replies. Comment bodies are trimmed and limited to 5,000 characters. This frontend has no authenticated user identity: new comments use the explicit “Demo user” label, and the UI permits editing/deleting comments bearing that label. This is a demo affordance only; the mock frontend does not enforce authorization.
+
 ## Persistence and Data Handling
 
-The adapter in [`services/storageAdapter.ts`](services/storageAdapter.ts) stores the complete `AppState` as JSON under `talenvo:app-state` in `localStorage`. It is called only in client effects, not during server rendering. The provider delays rendering application children until the initial load finishes, then restores valid state through a reducer action.
+The adapter in [`services/storageAdapter.ts`](services/storageAdapter.ts) stores a complete `AppState` snapshot as JSON under `talenvo:app-state` in `localStorage`. It is called only in client effects, not during server rendering. The provider delays rendering application children until initialization finishes, restores a valid local snapshot when present (otherwise it uses the mock API snapshot), and then saves optimistic state changes asynchronously through the API. Storage remains a browser-local cache/restore mechanism; it is not the shared backend.
 
-Restored JSON is treated as untrusted input. The adapter validates collection shapes, entity fields, tag status values, and board/column/card/tag relationships before returning it. Malformed or incompatible data is logged and left untouched. When storage is unavailable, the application continues in memory; save and clear failures do not throw. Invalid stored data is not overwritten by the initial state, though a later state change can be saved.
+Restored JSON is treated as untrusted input. The adapter validates collection shapes, entity fields, tag status values, card ordering, and board/column/card/tag/comment relationships before returning it. It also validates comment parent chains, cycles, depth, body, author, and timestamps. A valid snapshot created before comments existed is migrated in memory to include an empty comments record; unrelated data is retained. Malformed or incompatible data is logged and left untouched. When storage is unavailable, the application continues in memory; storage failures do not throw. Invalid stored data is not overwritten by the initial state, though a later state change can be saved.
 
-Persistence is browser-local and origin-specific. Clearing browser data removes the saved state; there is no server backup or cross-device synchronization.
+The mock API in [`services/mockBoardApi.ts`](services/mockBoardApi.ts) has a typed async load/save contract, snapshot isolation, configurable latency/failure injection, and revision checks that reject stale writes. The provider keeps optimistic edits visible after a failure, reports an unsaved state, and offers explicit retry of the latest complete snapshot. API data exists only in memory and is lost when the owning runtime restarts; it is not durable production persistence or shared between users, devices, browser tabs, or independent processes. The localStorage cache has separate browser-origin/profile durability but is not synchronized back to the API automatically on reload.
 
 ## Validation and Tests
 
 Zod schemas in `features/workspace/validation.ts` and `features/board/validation.ts` validate form values before feature hooks dispatch mutations. `node:test` covers storage load/save, complete state round-tripping, dates and nullable values, invalid JSON/state, storage failures, hydration policy, and reducer-to-storage persistence.
 
-The repository also contains component and integration test files, but they are empty and no framework or test script is configured for them. The storage test uses Node's built-in test runner and `--experimental-strip-types`; it was verified with Node `v24.21.0`.
+Vitest covers reducer operations for boards, columns, cards, tags, card movement, and comments, as well as mock API persistence and components including CommentThread, Button, ConfirmDialog, ErrorMessage, Input, KanbanColumn, MarkdownPreview, Modal, Sidebar, TaskCard, and Textarea. The separate Node storage tests cover load/save, state and comment validation, legacy snapshot migration, storage failures, hydration policy, and reducer-to-storage round-trips. There are no browser automation tests or dedicated performance benchmarks.
 
-`npm run lint` invokes Biome. The current checkout has no `biome.json`, so Biome's default CSS parser reports the Tailwind-specific `@plugin` and `@theme` directives in `app/globals.css`; restore/configure Tailwind directive parsing for a clean repository-wide lint run. Scoped checks of the changed TypeScript files are available with Biome.
+`npm run lint` invokes Biome using the checked-in `biome.json`, which enables Tailwind directive parsing. TypeScript strict mode is enabled in `tsconfig.json`; there is no dedicated type-check script, so run `npm exec -- tsc --noEmit --incremental false` directly.
+
+## Current Limitations
+
+- Mock API persistence is in-memory and resets when its runtime restarts. `localStorage` is browser-origin/profile scoped; neither mechanism synchronizes between users or devices.
+- Comment author labels are demo-only and do not provide authenticated ownership or authorization.
+- No real API persistence, mock WebSocket transport, undo/redo, or authentication is implemented.
+- There is no error-boundary route, toast notification system, or shared Badge component.
+- Dark colors follow the operating-system color-scheme preference in the global stylesheet; a theme toggle and consistently themed component surfaces are not implemented.
+- Performance at large board sizes has not been benchmarked, and no virtualization is implemented.
 
 ## Deployment
 
@@ -154,3 +176,32 @@ Set the production host's port and runtime configuration according to that host'
 ## Contributing and License
 
 Keep domain changes in the existing typed state/action/reducer flow, and validate persisted-state changes against `domain.types.ts`. Before submitting changes, run the relevant TypeScript, lint, build, and available test commands. No license file or contribution guide is present in this repository; licensing terms are therefore unspecified here.
+
+
+## WebSocket transport foundation
+
+The collaboration transport uses the browser's native `WebSocket` API and a Next.js App Router endpoint at `/api/ws`, hosted in the same Vercel project. It does not use Socket.IO or a separate Node.js server. The `CollaborationProvider` originally owned WebSocket lifecycle/status and room join/leave commands. In Phase 5B, the UI provider uses the simulated `BroadcastChannel` layer for local multi-tab presence; it does not own or duplicate `AppState`.
+
+The protocol in `services/collaboration/protocol.ts` uses versioned message envelopes with a UUID message ID and timestamp. Initial client messages are `room/join`, `room/leave`, and `heartbeat/ping`. Server messages include `connection/ready`, room acknowledgements, `heartbeat/pong`, and structured errors. Payloads are size-limited and validated at runtime.
+
+### Configuration and local development
+
+The client derives `ws://<host>/api/ws` for HTTP and `wss://<host>/api/ws` for HTTPS by default. Optionally set `NEXT_PUBLIC_COLLABORATION_WS_URL` to an explicit WebSocket URL. This variable is public and must never contain credentials or secrets.
+
+Vercel's `experimental_upgradeWebSocket()` API is used by the route and is experimental. The Vercel documentation notes that this endpoint requires Vercel's runtime support; `next dev` alone does not provide the upgrade handler. Use a current Vercel CLI and test with `vercel dev`, then verify behavior in a deployed preview before relying on it.
+
+### Scope and limitations
+
+This Phase establishes the WebSocket transport and room membership protocol. The simulated layer broadcasts full state snapshots between same-origin tabs, while the existing domain state, reducer, local storage cache, mock persistence API, and undo/redo remain in place.
+
+The route's room registry is process-local and is only useful for connections handled by the same function instance. Vercel pins an established WebSocket to a function instance for the connection's lifetime, but subsequent connections may land on another instance. Consequently, this implementation does **not** guarantee cross-instance room delivery. Reliable multi-instance collaboration requires shared pub/sub (for example, Redis/Upstash) and a deliberate event/reconciliation design. Therefore, this implemetation can't fulfilled as a production distributed collaboration backend.
+
+Authentication, board-level authorization, domain-event broadcasting, deduplication of mutations, conflict resolution, authoritative revisions, and reconnect reconciliation are not in place. The app remains usable if the collaboration connection is unavailable.
+
+## Simulated two-client collaboration
+
+This Phase adds a same-origin, same-browser simulation using the native `BroadcastChannel` API. Open the app in two tabs in the same browser profile, navigate to the same board, and make a board/card/comment change in one tab. `AppProvider` broadcasts a validated full-state snapshot after a local domain-state change; the other tab validates and applies that snapshot through the existing `state/restored` reducer action. Remote snapshots are persisted by that tab but are not re-broadcast, preventing a snapshot echo loop. Board presence is broadcast separately and the board header reports the number of other clients observed in the same board room.
+
+The existing `createMockBoardApi` remains in place for per-tab asynchronous persistence, revision checks, latency, and failure injection. This is intentionally a demonstration layer, not a production collaboration backend. `BroadcastChannel` only reaches same-origin contexts in the same browser profile, messages are ephemeral, presence can become stale after an abrupt tab crash, and snapshots use a simple last-arriving-snapshot approach. Simultaneous edits can overwrite one another; there is no durable event log, server authority, authentication, authorization, operation-level merge, or cross-device/cross-process delivery. The WebSocket route was implemented remains but is not required by the simulated collaboration UI currently in use.
+
+To exercise the simulation, run `npm run dev` and open the same origin in two tabs. Use a modern browser that supports `BroadcastChannel`. For each tab, the app continues to use its existing local storage cache and mock API instance. Automated tests for the simulation are in `services/collaboration/simulatedCollaboration.test.ts`.

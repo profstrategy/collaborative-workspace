@@ -1,17 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import MarkdownPreview from "@/components/ui/MarkdownPreview";
+import PersistenceStatus from "@/components/ui/PersistenceStatus";
 import { useAppProvider } from "@/state/AppProvider";
+import { useCollaboration } from "@/state/CollaborationProvider";
 import type { BoardCard, BoardColumn } from "@/state/domain.types";
 import { useBoard } from "../hooks/useBoard";
 import type { CardFormValues } from "../validation";
 import CardModal from "./CardModal";
 import ColumnModal from "./ColumnModal";
+import CommentThread from "./CommentThread";
 import KanbanColumn from "./KanbanColumn";
+import UndoRedoControls from "./UndoRedoControls";
 
 type PendingDeletion =
 	| { kind: "card"; card: BoardCard }
@@ -28,12 +32,32 @@ export interface BoardPageClientProps {
 }
 
 export default function BoardPageClient({ boardId }: BoardPageClientProps) {
-	const { state } = useAppProvider();
+	const {
+		status: collaborationStatus,
+		peerCount,
+		joinBoard,
+		leaveBoard,
+	} = useCollaboration();
+	useEffect(() => {
+		joinBoard(boardId);
+		return () => leaveBoard(boardId);
+	}, [boardId, joinBoard, leaveBoard]);
+
+	const {
+		state,
+		persistence,
+		retrySave,
+		history,
+		lastHistoryEvent,
+		undo,
+		redo,
+	} = useAppProvider();
 	const {
 		handleCreateCard,
 		handleCreateColumn,
 		handleDeleteCard,
 		handleDeleteColumn,
+		handleMoveCard,
 		handleUpdateCard,
 		handleUpdateColumn,
 		handleUpdateTags,
@@ -41,6 +65,7 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 	const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
 	const [editingColumn, setEditingColumn] = useState<BoardColumn>();
 	const [cardModalTarget, setCardModalTarget] = useState<CardModalTarget>();
+	const [commentsCardId, setCommentsCardId] = useState<string>();
 	const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion>();
 
 	const board = state.boards[boardId];
@@ -70,6 +95,13 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 		(card) => card.boardId === board.id,
 	);
 	const tags = Object.values(state.tags);
+	const commentCounts = new Map<string, number>();
+	for (const comment of Object.values(state.comments)) {
+		commentCounts.set(
+			comment.cardId,
+			(commentCounts.get(comment.cardId) ?? 0) + 1,
+		);
+	}
 
 	const closeColumnModal = () => {
 		setIsColumnModalOpen(false);
@@ -109,6 +141,7 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 	const cardColumn = cardModalTarget
 		? state.columns[cardModalTarget.card?.columnId ?? cardModalTarget.column.id]
 		: undefined;
+	const commentsCard = commentsCardId ? state.cards[commentsCardId] : undefined;
 
 	return (
 		<main className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
@@ -130,26 +163,43 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 							</div>
 						)}
 					</div>
-					<Button
-						variant="white"
-						onClick={() => {
-							setEditingColumn(undefined);
-							setIsColumnModalOpen(true);
-						}}
-					>
-						<svg
-							aria-hidden="true"
-							focusable="false"
-							className="h-4 w-4"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="2"
-							viewBox="0 0 24 24"
+					<div className="flex flex-wrap items-center gap-3">
+						<output className="text-xs text-[#6B7280]" aria-live="polite">
+							Collaboration:{" "}
+							{collaborationStatus === "connected"
+								? "simulated"
+								: collaborationStatus}{" "}
+							· {peerCount} other {peerCount === 1 ? "client" : "clients"}
+						</output>
+						<UndoRedoControls
+							history={history}
+							lastHistoryEvent={lastHistoryEvent}
+							onUndo={undo}
+							onRedo={redo}
+						/>
+
+						<PersistenceStatus persistence={persistence} onRetry={retrySave} />
+						<Button
+							variant="white"
+							onClick={() => {
+								setEditingColumn(undefined);
+								setIsColumnModalOpen(true);
+							}}
 						>
-							<path d="M12 5v14M5 12h14" />
-						</svg>
-						Add column
-					</Button>
+							<svg
+								aria-hidden="true"
+								focusable="false"
+								className="h-4 w-4"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+								viewBox="0 0 24 24"
+							>
+								<path d="M12 5v14M5 12h14" />
+							</svg>
+							Add column
+						</Button>
+					</div>
 				</header>
 
 				{columns.length > 0 ? (
@@ -162,8 +212,12 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 								<KanbanColumn
 									key={column.id}
 									column={column}
+									columns={columns}
 									cards={cards}
 									tags={tags}
+									onMoveCard={handleMoveCard}
+									commentCounts={commentCounts}
+									onShowComments={(card) => setCommentsCardId(card.id)}
 									onEditColumn={setEditingColumn}
 									onDeleteColumn={(selectedColumn) =>
 										setPendingDeletion({
@@ -227,6 +281,13 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 					onSubmit={handleCardSubmit}
 				/>
 			)}
+			{commentsCard && (
+				<CommentThread
+					cardId={commentsCard.id}
+					cardTitle={commentsCard.title}
+					onClose={() => setCommentsCardId(undefined)}
+				/>
+			)}
 			<ConfirmDialog
 				open={Boolean(pendingDeletion)}
 				title={
@@ -234,8 +295,8 @@ export default function BoardPageClient({ boardId }: BoardPageClientProps) {
 				}
 				description={
 					pendingDeletion?.kind === "column"
-						? `Delete ${pendingDeletion.column.title} and all its cards and tags? This action cannot be undone.`
-						: `Delete ${pendingDeletion?.kind === "card" ? pendingDeletion.card.title : "this card"}? This action cannot be undone.`
+						? `Delete ${pendingDeletion.column.title} and all its cards, tags, and comments? This action cannot be undone.`
+						: `Delete ${pendingDeletion?.kind === "card" ? pendingDeletion.card.title : "this card"} and its comments and replies? This action cannot be undone.`
 				}
 				onCancel={() => setPendingDeletion(undefined)}
 				onConfirm={() => {

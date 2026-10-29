@@ -1,7 +1,14 @@
 "use client";
 
+import type { DragEvent as ReactDragEvent } from "react";
+import { useState } from "react";
 import MarkdownPreview from "@/components/ui/MarkdownPreview";
-import type { Tag, BoardCard as Task } from "@/state/domain.types";
+import type {
+	BoardColumn,
+	EntityId,
+	Tag,
+	BoardCard as Task,
+} from "@/state/domain.types";
 import { useTaskCardUI } from "../hooks/useTaskCardUI";
 import { tagStatusClasses } from "../tagPresentation";
 import TagDropdown from "./TagDropdown";
@@ -12,6 +19,16 @@ export interface TaskCardProps {
 	onEdit?: (card: Task) => void;
 	onDelete?: (card: Task) => void;
 	onTagsChange?: (statuses: Tag["status"][]) => void;
+	columns?: readonly BoardColumn[];
+	destinationIndex?: number;
+	columnCardCount?: number;
+	onMoveCard?: (
+		cardId: EntityId,
+		destinationColumnId: EntityId,
+		destinationIndex: number,
+	) => void;
+	commentCount?: number;
+	onShowComments?: (card: Task) => void;
 }
 
 function formatDueDate(value: string | null) {
@@ -37,7 +54,14 @@ export default function TaskCard({
 	onEdit,
 	onDelete,
 	onTagsChange,
+	columns = [],
+	destinationIndex = 0,
+	columnCardCount = 1,
+	onMoveCard,
+	commentCount = 0,
+	onShowComments,
 }: TaskCardProps) {
+	const [moveAnnouncement, setMoveAnnouncement] = useState("");
 	const {
 		closeTagSelector,
 		isTagSelectorOpen,
@@ -55,9 +79,54 @@ export default function TaskCard({
 			tag.columnId === card.columnId &&
 			card.tagIds.includes(tag.id),
 	);
+	const destinationColumns = columns.filter(
+		(column) => column.boardId === card.boardId && column.id !== card.columnId,
+	);
+
+	const handleDragStart = (event: ReactDragEvent<HTMLElement>) => {
+		event.dataTransfer.setData("text/plain", card.id);
+		event.dataTransfer.effectAllowed = "move";
+	};
+
+	const handleDrop = (event: ReactDragEvent<HTMLElement>) => {
+		if (!onMoveCard) return;
+
+		event.preventDefault();
+		event.stopPropagation();
+		const draggedCardId = event.dataTransfer.getData("text/plain");
+		if (draggedCardId) {
+			onMoveCard(draggedCardId, card.columnId, destinationIndex);
+		}
+	};
+
+	const moveWithinColumn = (destinationIndex: number) => {
+		if (!onMoveCard) return;
+
+		onMoveCard(card.id, card.columnId, destinationIndex);
+		setMoveAnnouncement(
+			`Moved ${card.title} to position ${destinationIndex + 1} of ${columnCardCount}.`,
+		);
+	};
+
+	const restoreMoveControlFocus = (cardId: EntityId) => {
+		window.requestAnimationFrame(() => {
+			const moveControl = Array.from(
+				document.querySelectorAll<HTMLSelectElement>(
+					"[data-card-move-control]",
+				),
+			).find((control) => control.dataset.cardMoveControl === cardId);
+			moveControl?.focus();
+		});
+	};
 
 	return (
-		<article className="group flex min-h-40 flex-col justify-between rounded-xl border border-[#E2E5E9] bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm focus-within:border-slate-300 focus-within:shadow-sm motion-reduce:transition-none">
+		<article
+			draggable={Boolean(onMoveCard)}
+			onDragStart={onMoveCard ? handleDragStart : undefined}
+			onDragOver={onMoveCard ? (event) => event.preventDefault() : undefined}
+			onDrop={onMoveCard ? handleDrop : undefined}
+			className="group flex min-h-40 flex-col justify-between rounded-xl border border-[#E2E5E9] bg-white p-4 transition-all hover:border-slate-300 hover:shadow-sm focus-within:border-slate-300 focus-within:shadow-sm motion-reduce:transition-none"
+		>
 			<div>
 				<div className="flex items-start justify-between gap-2">
 					<h3 className="min-w-0 flex-1 text-sm font-semibold leading-snug text-[#1E232A]">
@@ -147,7 +216,76 @@ export default function TaskCard({
 							}}
 						/>
 					)}
+					{onMoveCard && (
+						<div className="flex items-center gap-1">
+							<button
+								type="button"
+								aria-label={`Move ${card.title} earlier`}
+								disabled={destinationIndex <= 0}
+								onClick={() => moveWithinColumn(destinationIndex - 1)}
+								className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md text-[#6B7280] hover:bg-slate-100 hover:text-[#1E232A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+							>
+								<span aria-hidden="true">Up</span>
+							</button>
+							<button
+								type="button"
+								aria-label={`Move ${card.title} later`}
+								disabled={destinationIndex >= columnCardCount - 1}
+								onClick={() => moveWithinColumn(destinationIndex + 1)}
+								className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-md text-[#6B7280] hover:bg-slate-100 hover:text-[#1E232A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+							>
+								<span aria-hidden="true">Down</span>
+							</button>
+						</div>
+					)}
+					{onMoveCard && destinationColumns.length > 0 && (
+						<select
+							aria-label={`Move task: ${card.title} to column`}
+							defaultValue=""
+							onChange={(event) => {
+								const select = event.currentTarget;
+								const destinationColumnId = select.value;
+								select.value = "";
+								const destinationColumn = destinationColumns.find(
+									(column) => column.id === destinationColumnId,
+								);
+								if (destinationColumn) {
+									onMoveCard(
+										card.id,
+										destinationColumnId,
+										destinationColumn.cardIds.length,
+									);
+									restoreMoveControlFocus(card.id);
+								}
+							}}
+							data-card-move-control={card.id}
+							className="max-w-28 rounded border border-[#E2E5E9] bg-white px-1.5 py-1 text-[11px] text-[#4B5563] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+						>
+							<option value="">Move to column</option>
+							{destinationColumns.map((column) => (
+								<option key={column.id} value={column.id}>
+									{column.title}
+								</option>
+							))}
+						</select>
+					)}
+					{onShowComments && (
+						<button
+							type="button"
+							aria-label={`Comments for ${card.title}: ${commentCount}`}
+							onClick={() => onShowComments(card)}
+							className="inline-flex min-h-9 items-center gap-1 rounded-md px-2 text-xs font-medium text-blue-800 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+						>
+							<span aria-hidden="true">Comments</span>
+							<span className="rounded-full border border-slate-300 px-1.5 py-0.5">
+								{commentCount}
+							</span>
+						</button>
+					)}
 				</div>
+				<output aria-live="polite" className="sr-only">
+					{moveAnnouncement}
+				</output>
 
 				<div className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-[#6B7280]">
 					<svg

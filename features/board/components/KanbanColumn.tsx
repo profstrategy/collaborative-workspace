@@ -1,13 +1,20 @@
 "use client";
 
+import type { DragEvent as ReactDragEvent } from "react";
 import { useId } from "react";
 import Button from "@/components/ui/Button";
-import type { BoardCard, BoardColumn, Tag } from "@/state/domain.types";
+import type {
+	BoardCard,
+	BoardColumn,
+	EntityId,
+	Tag,
+} from "@/state/domain.types";
 import { useKanbanColumnUI } from "../hooks/useKanbanColumnUI";
 import TaskCard from "./TaskCard";
 
 export interface KanbanColumnProps {
 	column: BoardColumn;
+	columns: readonly BoardColumn[];
 	cards: readonly BoardCard[];
 	tags: readonly Tag[];
 	onEditColumn?: (column: BoardColumn) => void;
@@ -16,10 +23,18 @@ export interface KanbanColumnProps {
 	onEditCard?: (card: BoardCard) => void;
 	onDeleteCard?: (card: BoardCard) => void;
 	onTagsChange?: (card: BoardCard, statuses: Tag["status"][]) => void;
+	onMoveCard?: (
+		cardId: EntityId,
+		destinationColumnId: EntityId,
+		destinationIndex: number,
+	) => void;
+	commentCounts?: ReadonlyMap<EntityId, number>;
+	onShowComments?: (card: BoardCard) => void;
 }
 
 export default function KanbanColumn({
 	column,
+	columns,
 	cards,
 	tags,
 	onEditColumn,
@@ -28,6 +43,9 @@ export default function KanbanColumn({
 	onEditCard,
 	onDeleteCard,
 	onTagsChange,
+	onMoveCard,
+	commentCounts,
+	onShowComments,
 }: KanbanColumnProps) {
 	const headingId = useId();
 	const {
@@ -40,20 +58,35 @@ export default function KanbanColumn({
 		triggerRef,
 	} = useKanbanColumnUI();
 
-	const columnCards = cards
-		.filter(
-			(card) => card.columnId === column.id && card.boardId === column.boardId,
-		)
-		.sort(
-			(firstCard, secondCard) =>
-				(firstCard.position ?? Number.MAX_SAFE_INTEGER) -
-				(secondCard.position ?? Number.MAX_SAFE_INTEGER),
-		);
+	const cardsById = new Map(cards.map((card) => [card.id, card]));
+	const columnCards = column.cardIds.flatMap((cardId) => {
+		const card = cardsById.get(cardId);
+		return card?.columnId === column.id && card.boardId === column.boardId
+			? [card]
+			: [];
+	});
 	const hasColumnActions = Boolean(onEditColumn || onDeleteColumn);
+
+	const handleDrop = (event: ReactDragEvent<HTMLElement>) => {
+		if (!onMoveCard) return;
+
+		event.preventDefault();
+		const cardId = event.dataTransfer.getData("text/plain");
+		if (cardId) {
+			const sourceCard = cards.find((card) => card.id === cardId);
+			const destinationIndex =
+				sourceCard?.columnId === column.id
+					? columnCards.length - 1
+					: columnCards.length;
+			onMoveCard(cardId, column.id, Math.max(0, destinationIndex));
+		}
+	};
 
 	return (
 		<section
 			aria-labelledby={headingId}
+			onDragOver={onMoveCard ? (event) => event.preventDefault() : undefined}
+			onDrop={onMoveCard ? handleDrop : undefined}
 			className="flex min-h-120 w-80 shrink-0 flex-col rounded-2xl border border-[#E2E5E9] bg-[#F1F2F4] p-4 shadow-sm"
 		>
 			<div className="flex items-center justify-between gap-2 border-b border-[#E2E5E9]/70 pb-3">
@@ -140,13 +173,19 @@ export default function KanbanColumn({
 
 			{columnCards.length > 0 ? (
 				<ul className="mt-3.5 flex flex-1 flex-col gap-3">
-					{columnCards.map((card) => (
+					{columnCards.map((card, index) => (
 						<li key={card.id}>
 							<TaskCard
 								card={card}
 								tags={tags}
+								columns={columns}
 								onEdit={onEditCard}
 								onDelete={onDeleteCard}
+								destinationIndex={index}
+								columnCardCount={columnCards.length}
+								onMoveCard={onMoveCard}
+								commentCount={commentCounts?.get(card.id) ?? 0}
+								onShowComments={onShowComments}
 								onTagsChange={
 									onTagsChange
 										? (statuses) => onTagsChange(card, statuses)
